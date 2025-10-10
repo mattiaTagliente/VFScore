@@ -121,15 +121,28 @@ def test_blender() -> bool:
 
 def test_api_keys() -> bool:
     """Test API keys."""
+    # --- START MODIFICATION ---
+    # Manually load .env file for this standalone test script
+    # because os.getenv() doesn't do it automatically.
+    env_path = Path(".env")
+    if env_path.exists():
+        with open(env_path) as f:
+            for line in f:
+                line = line.strip()
+                if line and not line.startswith("#") and "=" in line:
+                    key, value = line.split("=", 1)
+                    os.environ.setdefault(key.strip(), value.strip())
+    # --- END MODIFICATION ---
+
     api_key = os.getenv("GEMINI_API_KEY")
-    
+
     if api_key:
-        masked_key = api_key[:8] + "..." + api_key[-4:] if len(api_key) > 12 else "***"
+        masked_key = api_key[:4] + "..." * (len(api_key) > 8) + api_key[-4:]
         console.print(f"[green]✓[/green] GEMINI_API_KEY set: {masked_key}")
         return True
     else:
-        console.print("[yellow]⚠[/yellow] GEMINI_API_KEY not set")
-        console.print("  Create .env file with your API key")
+        console.print("[red]✗[/red] GEMINI_API_KEY not set")
+        console.print("  Check that your .env file exists and has the key.")
         return False
 
 
