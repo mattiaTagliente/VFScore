@@ -89,7 +89,7 @@ bpy.context.scene.collection.objects.link(cam_obj)
 
 # Position camera (spherical coordinates)
 radius = {camera_cfg.radius}
-azimuth = math.radians({camera_cfg.azimuth_deg})
+azimuth = math.radians({camera_cfg.azimuth_deg} + 180)
 elevation = math.radians({camera_cfg.elevation_deg})
 
 cam_x = radius * math.cos(elevation) * math.cos(azimuth)
