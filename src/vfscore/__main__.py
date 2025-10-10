@@ -1,0 +1,285 @@
+"""VFScore CLI - Main entry point for the Visual Fidelity Scoring system."""
+
+from pathlib import Path
+from typing import Optional
+
+import typer
+from rich.console import Console
+from rich.panel import Panel
+
+from vfscore import __version__
+from vfscore.config import get_config
+from vfscore.utils import load_env_file
+
+# Auto-load .env file on startup
+load_env_file()
+
+app = typer.Typer(
+    name="vfscore",
+    help="Visual Fidelity Scoring for 3D Generated Objects",
+    add_completion=False,
+)
+console = Console()
+
+
+def version_callback(value: bool) -> None:
+    """Print version and exit."""
+    if value:
+        console.print(f"[bold blue]VFScore[/bold blue] version {__version__}")
+        raise typer.Exit()
+
+
+@app.callback()
+def main(
+    version: Optional[bool] = typer.Option(
+        None,
+        "--version",
+        "-v",
+        callback=version_callback,
+        is_eager=True,
+        help="Show version and exit.",
+    ),
+) -> None:
+    """VFScore - Automated Visual Fidelity Scoring for 3D Generated Objects."""
+    pass
+
+
+@app.command()
+def ingest(
+    config_path: Path = typer.Option("config.yaml", help="Path to config file"),
+) -> None:
+    """
+    Ingest dataset: scan folders and create manifest.
+    
+    Reads:
+    - datasets/refs/<item_id>/*.jpg|png
+    - datasets/gens/<item_id>/*.glb
+    - metadata/categories.csv
+    
+    Creates:
+    - outputs/manifest.jsonl
+    """
+    from vfscore.ingest import run_ingest
+    
+    console.print(Panel.fit("[bold cyan]Step 1: Data Ingestion[/bold cyan]"))
+    config = get_config()
+    
+    try:
+        manifest_path = run_ingest(config)
+        console.print(f"[green]✓[/green] Manifest created: {manifest_path}")
+    except Exception as e:
+        console.print(f"[red]✗[/red] Ingestion failed: {e}")
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def preprocess_gt(
+    config_path: Path = typer.Option("config.yaml", help="Path to config file"),
+) -> None:
+    """
+    Preprocess ground truth photos: segment, standardize, label.
+    
+    Reads:
+    - datasets/refs/<item_id>/*.jpg|png
+    
+    Creates:
+    - outputs/preprocess/refs/<item_id>/gt_*.png
+    """
+    from vfscore.preprocess_gt import run_preprocess_gt
+    
+    console.print(Panel.fit("[bold cyan]Step 2: Ground Truth Preprocessing[/bold cyan]"))
+    config = get_config()
+    
+    try:
+        run_preprocess_gt(config)
+        console.print("[green]✓[/green] Ground truth images preprocessed")
+    except Exception as e:
+        console.print(f"[red]✗[/red] GT preprocessing failed: {e}")
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def render_cand(
+    config_path: Path = typer.Option("config.yaml", help="Path to config file"),
+    fast: bool = typer.Option(False, help="Fast mode: 128 samples instead of 256"),
+) -> None:
+    """
+    Render candidate 3D objects using Blender Cycles.
+    
+    Reads:
+    - datasets/gens/<item_id>/*.glb
+    
+    Creates:
+    - outputs/preprocess/cand/<item_id>/candidate.png
+    """
+    from vfscore.render_cycles import run_render_candidates
+    
+    console.print(Panel.fit("[bold cyan]Step 3: Candidate Rendering (Blender Cycles)[/bold cyan]"))
+    config = get_config()
+    
+    if fast:
+        console.print("[yellow]Fast mode enabled: 128 samples[/yellow]")
+        config.render.samples = 128
+    
+    try:
+        run_render_candidates(config)
+        console.print("[green]✓[/green] Candidates rendered")
+    except Exception as e:
+        console.print(f"[red]✗[/red] Rendering failed: {e}")
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def package(
+    config_path: Path = typer.Option("config.yaml", help="Path to config file"),
+) -> None:
+    """
+    Package scoring units: combine GT and candidate images with labels.
+    
+    Reads:
+    - outputs/preprocess/refs/<item_id>/gt_*.png
+    - outputs/preprocess/cand/<item_id>/candidate.png
+    
+    Creates:
+    - outputs/labels/<item_id>/gt_*_labeled.png
+    - outputs/labels/<item_id>/candidate_labeled.png
+    - outputs/labels/<item_id>/packet.json
+    """
+    from vfscore.packetize import run_packetize
+    
+    console.print(Panel.fit("[bold cyan]Step 4: Packaging Scoring Units[/bold cyan]"))
+    config = get_config()
+    
+    try:
+        run_packetize(config)
+        console.print("[green]✓[/green] Scoring packets created")
+    except Exception as e:
+        console.print(f"[red]✗[/red] Packaging failed: {e}")
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def score(
+    model: str = typer.Option("gemini-2.5-pro", help="LLM model: gemini-2.5-pro, gemini-2.5-flash"),
+    repeats: int = typer.Option(3, help="Number of repeats per item"),
+    config_path: Path = typer.Option("config.yaml", help="Path to config file"),
+) -> None:
+    """
+    Score visual fidelity using LLM vision models.
+    
+    Uses Gemini 2.5 Pro by default for complex visual reasoning.
+    
+    Reads:
+    - outputs/labels/<item_id>/packet.json
+    
+    Creates:
+    - outputs/llm_calls/<model>/<item_id>/rep_{1,2,3}.json
+    """
+    from vfscore.scoring import run_scoring
+    
+    console.print(Panel.fit(f"[bold cyan]Step 5: LLM Scoring ({model})[/bold cyan]"))
+    config = get_config()
+    
+    try:
+        run_scoring(config, model=model, repeats=repeats)
+        console.print(f"[green]✓[/green] Scoring complete using {model}")
+    except Exception as e:
+        console.print(f"[red]✗[/red] Scoring failed: {e}")
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def aggregate(
+    config_path: Path = typer.Option("config.yaml", help="Path to config file"),
+) -> None:
+    """
+    Aggregate scores: compute medians and confidence metrics.
+    
+    Reads:
+    - outputs/llm_calls/<model>/<item_id>/rep_*.json
+    
+    Creates:
+    - outputs/results/per_item.jsonl
+    - outputs/results/per_item.csv
+    """
+    from vfscore.aggregate import run_aggregation
+    
+    console.print(Panel.fit("[bold cyan]Step 6: Score Aggregation[/bold cyan]"))
+    config = get_config()
+    
+    try:
+        run_aggregation(config)
+        console.print("[green]✓[/green] Scores aggregated")
+    except Exception as e:
+        console.print(f"[red]✗[/red] Aggregation failed: {e}")
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def report(
+    config_path: Path = typer.Option("config.yaml", help="Path to config file"),
+) -> None:
+    """
+    Generate HTML report with thumbnails and scores.
+    
+    Reads:
+    - outputs/results/per_item.jsonl
+    - outputs/labels/<item_id>/*.png
+    
+    Creates:
+    - outputs/report/index.html
+    """
+    from vfscore.report import run_report
+    
+    console.print(Panel.fit("[bold cyan]Step 7: Report Generation[/bold cyan]"))
+    config = get_config()
+    
+    try:
+        report_path = run_report(config)
+        console.print(f"[green]✓[/green] Report generated: {report_path}")
+    except Exception as e:
+        console.print(f"[red]✗[/red] Report generation failed: {e}")
+        raise typer.Exit(code=1)
+
+
+@app.command()
+def run_all(
+    model: str = typer.Option("gemini-2.5-pro", help="LLM model to use"),
+    repeats: int = typer.Option(3, help="Number of repeats per item"),
+    fast: bool = typer.Option(False, help="Fast rendering mode"),
+    config_path: Path = typer.Option("config.yaml", help="Path to config file"),
+) -> None:
+    """
+    Run the complete pipeline: ingest → preprocess → render → score → report.
+    
+    Uses Gemini 2.5 Pro by default for best visual reasoning quality.
+    """
+    console.print(Panel.fit("[bold magenta]VFScore Complete Pipeline[/bold magenta]"))
+    console.print(f"[cyan]Model: {model}[/cyan]")
+    console.print(f"[cyan]Repeats: {repeats}[/cyan]")
+    if fast:
+        console.print("[yellow]Fast rendering mode enabled[/yellow]")
+    
+    # Run all steps in sequence
+    steps = [
+        ("ingest", lambda: ingest(config_path)),
+        ("preprocess-gt", lambda: preprocess_gt(config_path)),
+        ("render-cand", lambda: render_cand(config_path, fast)),
+        ("package", lambda: package(config_path)),
+        ("score", lambda: score(model, repeats, config_path)),
+        ("aggregate", lambda: aggregate(config_path)),
+        ("report", lambda: report(config_path)),
+    ]
+    
+    for step_name, step_func in steps:
+        try:
+            step_func()
+        except Exception as e:
+            console.print(f"[red]Pipeline stopped at: {step_name}[/red]")
+            raise typer.Exit(code=1)
+    
+    console.print("\n[bold green]✓ Pipeline complete![/bold green]")
+
+
+if __name__ == "__main__":
+    app()

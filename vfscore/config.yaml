@@ -1,0 +1,51 @@
+paths:
+  refs_dir: datasets/refs
+  gens_dir: datasets/gens
+  categories: metadata/categories.csv
+  hdri: assets/lights.hdr
+  out_dir: outputs
+  blender_exe: C:\Program Files\Blender Foundation\Blender 4.5\blender.exe
+
+render:
+  engine: cycles
+  samples: 256
+  fov_deg: 42
+  camera:
+    radius: 2.2
+    azimuth_deg: 45
+    elevation_deg: 35
+  object_prez_rot_z_deg: 20
+  filmic: true
+  film_transparent: true
+  denoiser: OIDN
+  resolution: 1024
+
+preprocess:
+  canvas_px: 1024
+  bg_rgb: [0, 0, 0]
+  crop_margin_frac: 0.05
+  feather_px: 2
+  label_bar_frac: 0.06
+
+scoring:
+  models: [gemini]
+  repeats: 3
+  rubric_weights:
+    color_palette: 40
+    material_finish: 25
+    texture_identity: 10
+    texture_scale_placement: 15
+    shading_response: 5
+    rendering_artifacts: 5
+  temperature: 0.0
+  top_p: 1.0
+
+sentinels:
+  enabled: false  # Phase 2
+  positive_threshold: 85
+  negative_threshold: 25
+
+logging:
+  level: INFO
+  save_prompts: true
+  save_timing: true
