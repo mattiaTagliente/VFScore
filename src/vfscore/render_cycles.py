@@ -13,7 +13,6 @@ from vfscore.config import Config
 
 console = Console()
 
-
 def generate_blender_script(
     glb_path: Path,
     output_path: Path,
@@ -25,11 +24,18 @@ def generate_blender_script(
     render_cfg = config.render
     camera_cfg = render_cfg.camera
     
+    # Correct the denoiser name
+    if render_cfg.denoiser == "OIDN":
+        denoiser = "OPENIMAGEDENOISE"
+    else:
+        denoiser = render_cfg.denoiser
+
     script = f'''
 import bpy
 import math
 import sys
 from pathlib import Path
+from mathutils import Vector
 
 # Clear scene
 bpy.ops.object.select_all(action='SELECT')
@@ -93,7 +99,7 @@ cam_z = radius * math.sin(elevation)
 cam_obj.location = (cam_x, cam_y, cam_z)
 
 # Point camera at origin
-direction = (-cam_x, -cam_y, -cam_z)
+direction = Vector((-cam_x, -cam_y, -cam_z))
 rot_quat = direction.to_track_quat('-Z', 'Y')
 cam_obj.rotation_euler = rot_quat.to_euler()
 
@@ -124,7 +130,7 @@ scene.render.engine = 'CYCLES'
 scene.cycles.device = 'GPU'  # Use GPU if available
 scene.cycles.samples = {render_cfg.samples}
 scene.cycles.use_denoising = True
-scene.cycles.denoiser = '{render_cfg.denoiser}'
+scene.cycles.denoiser = '{denoiser}'
 
 # Film settings
 scene.render.film_transparent = {str(render_cfg.film_transparent)}
@@ -166,42 +172,49 @@ def render_glb(
     config: Config,
 ) -> bool:
     """Render a single GLB file using Blender."""
-    
+
     # Generate Blender script
     script = generate_blender_script(glb_path, output_path, hdri_path, config)
-    
+
     # Write script to temp file
-    with tempfile.NamedTemporaryFile(mode='w', suffix='.py', delete=False) as f:
+    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write(script)
         script_path = Path(f.name)
-    
+
     try:
         # Run Blender in background
-        cmd = [
-            str(blender_exe),
-            "--background",
-            "--python", str(script_path)
-        ]
-        
+        cmd = [str(blender_exe), "--background", "--python", str(script_path)]
+
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=300  # 5 minute timeout
+            encoding="utf-8",
+            errors="ignore",
+            timeout=300,  # 5 minute timeout
         )
-        
-        if result.returncode != 0:
-            console.print(f"[red]Blender error:[/red]")
+
+        # Always print Blender's output for debugging
+        if result.stdout:
+            console.print("[bold]Blender stdout:[/bold]")
+            console.print(result.stdout)
+        if result.stderr:
+            console.print("[bold]Blender stderr:[/bold]")
             console.print(result.stderr)
+
+        if result.returncode != 0:
+            console.print(
+                f"[red]Blender exited with error code: {result.returncode}[/red]"
+            )
             return False
-        
+
         # Check if output was created
         if not output_path.exists():
             console.print(f"[red]Output file not created: {output_path}[/red]")
             return False
-        
+
         return True
-        
+
     except subprocess.TimeoutExpired:
         console.print(f"[red]Blender render timeout for {glb_path}[/red]")
         return False
