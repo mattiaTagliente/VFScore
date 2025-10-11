@@ -107,13 +107,35 @@ class Config(BaseModel):
 
     @classmethod
     def load(cls, config_path: Path | str = "config.yaml") -> "Config":
-        """Load configuration from YAML file."""
+        """Load configuration from YAML file with local overrides.
+        
+        This method loads the base config.yaml and then applies any overrides
+        from config.local.yaml if it exists. This allows developers to have
+        machine-specific settings without modifying the shared config.
+        
+        Args:
+            config_path: Path to the base configuration file
+            
+        Returns:
+            Config instance with applied overrides
+        """
         config_path = Path(config_path)
         if not config_path.exists():
             raise FileNotFoundError(f"Config file not found: {config_path}")
 
+        # Load base configuration
         with open(config_path, "r", encoding="utf-8") as f:
             data = yaml.safe_load(f)
+
+        # Check for local configuration override
+        local_config_path = config_path.parent / "config.local.yaml"
+        if local_config_path.exists():
+            with open(local_config_path, "r", encoding="utf-8") as f:
+                local_data = yaml.safe_load(f)
+            
+            # Deep merge local config into base config
+            if local_data:
+                data = _deep_merge(data, local_data)
 
         return cls(**data)
 
@@ -131,6 +153,32 @@ class Config(BaseModel):
             path = getattr(self.paths, field_name)
             if not path.is_absolute():
                 setattr(self.paths, field_name, project_root / path)
+
+
+def _deep_merge(base: dict, override: dict) -> dict:
+    """Deep merge two dictionaries.
+    
+    Values in 'override' take precedence over 'base'.
+    Nested dictionaries are merged recursively.
+    
+    Args:
+        base: Base dictionary
+        override: Override dictionary
+        
+    Returns:
+        Merged dictionary
+    """
+    result = base.copy()
+    
+    for key, value in override.items():
+        if key in result and isinstance(result[key], dict) and isinstance(value, dict):
+            # Recursively merge nested dicts
+            result[key] = _deep_merge(result[key], value)
+        else:
+            # Override value
+            result[key] = value
+    
+    return result
 
 
 # Global config instance

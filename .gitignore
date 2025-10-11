@@ -22,12 +22,15 @@ share/python-wheels/
 .installed.cfg
 *.egg
 MANIFEST
+*.pyc
 
 # Virtual environments
 venv/
 env/
 ENV/
 .venv
+venv.bak/
+env.bak/
 
 # IDEs
 .vscode/
@@ -36,33 +39,79 @@ ENV/
 *.swo
 *~
 .DS_Store
+*.sublime-project
+*.sublime-workspace
 
-# Project specific
+# Project specific outputs
 outputs/
 logs/
 *.log
 
-# Environment variables
+# Environment variables and local config (CRITICAL - DO NOT COMMIT)
 .env
 .env.local
+.env.*.local
+config.local.yaml
+config.local.yml
 
 # Testing
 .pytest_cache/
 .coverage
 htmlcov/
+.tox/
+.nox/
+coverage.xml
+*.cover
+.hypothesis/
 
 # Jupyter
 .ipynb_checkpoints
+*.ipynb
 
-# mypy
+# Type checking
 .mypy_cache/
 .dmypy.json
 dmypy.json
+.pyre/
+.pytype/
+
+# Profiling
+*.prof
 
 # Blender temp files
 *.blend1
 *.blend2
+*.blend3
 
-# Large files (optional - uncomment if needed)
+# OS specific
+Thumbs.db
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+.Spotlight-V100
+.Trashes
+
+# Large files (configure based on your needs)
+# Uncomment if you don't want to commit datasets
 # datasets/
 # assets/*.hdr
+
+# Documentation build
+docs/_build/
+site/
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
+# Database files (if any)
+*.db
+*.sqlite
+*.sqlite3
+
+# CI/CD
+.github/workflows/*.local.yml

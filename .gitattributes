@@ -1,0 +1,27 @@
+# Git attributes for better cross-platform collaboration
+
+# Auto detect text files and normalize line endings to LF
+* text=auto eol=lf
+
+# Explicitly set line endings for specific files
+*.py text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.md text eol=lf
+*.txt text eol=lf
+*.sh text eol=lf
+*.bat text eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.glb binary
+*.hdr binary
+*.blend binary
+
+# Export ignore (files not included in GitHub releases)
+.gitignore export-ignore
+.gitattributes export-ignore
+tests/ export-ignore
+.github/ export-ignore

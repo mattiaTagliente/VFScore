@@ -12,6 +12,43 @@ VFScore provides an end-to-end system to:
 
 **Key Feature**: Evaluates appearance only (color, materials, textures) - geometry quality is assessed separately using F-SCORE.
 
+## Quick Start
+
+### For New Developers
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/mattiaTagliente/VFScore.git
+   cd VFScore
+   ```
+
+2. **Run interactive setup:**
+   ```bash
+   python setup.py
+   ```
+   
+   The setup script will guide you through:
+   - Creating your `.env` file with API keys
+   - Configuring Blender path
+   - Installing dependencies
+   - Verifying the setup
+
+3. **Activate virtual environment:**
+   ```bash
+   # Windows
+   .\venv\Scripts\activate
+   
+   # macOS/Linux
+   source venv/bin/activate
+   ```
+
+4. **Run the pipeline:**
+   ```bash
+   vfscore run-all
+   ```
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed developer setup instructions.
+
 ## Project Structure
 
 ```
@@ -22,7 +59,6 @@ VFScore/
 │   ├── ingest.py         # Data ingestion
 │   ├── preprocess_gt.py  # GT photo preprocessing
 │   ├── render_cycles.py  # Blender Cycles rendering
-│   ├── preprocess_cand.py# Candidate preprocessing
 │   ├── packetize.py      # Scoring packet assembly
 │   ├── scoring.py        # LLM scoring orchestration
 │   ├── aggregate.py      # Score aggregation
@@ -35,85 +71,109 @@ VFScore/
 │   └── categories.csv    # Item categories (l1, l2, l3)
 ├── assets/
 │   └── lights.hdr        # Studio HDRI lighting
-├── outputs/              # Generated artifacts
-└── tests/                # Unit tests
+├── outputs/              # Generated artifacts (not in git)
+├── tests/                # Unit tests
+├── config.yaml           # Shared default config
+├── config.local.yaml     # Your local overrides (not in git)
+├── .env                  # Your API keys (not in git)
+└── setup.py              # Interactive setup script
+```
+
+## Configuration System
+
+VFScore uses a two-layer configuration approach:
+
+- **`config.yaml`**: Shared default settings (committed to git)
+- **`config.local.yaml`**: Your machine-specific overrides (not committed)
+
+Example `config.local.yaml`:
+```yaml
+paths:
+  blender_exe: "/your/path/to/blender"
+
+render:
+  samples: 128  # Lower for faster testing
+```
+
+## Prerequisites
+
+- **Python 3.11+**
+- **Blender 4.2+** for rendering
+- **Git** for version control
+- **API Keys**:
+  - Google Gemini API key (required) - Get from [Google AI Studio](https://aistudio.google.com/app/apikey)
+  - OpenAI API key (optional, for Phase 2)
 
 ## Installation
 
-### Prerequisites
-- Python 3.11+
-- Blender 4.5+ installed at: `C:\Program Files\Blender Foundation\Blender 4.5\blender.exe`
-- API keys for LLM services (Gemini, GPT-4V)
+### Option 1: Interactive Setup (Recommended)
 
-### Setup
-
-1. Clone the repository:
 ```bash
-git clone <repository-url>
-cd VFScore
+python setup.py
 ```
 
-2. Create virtual environment:
+### Option 2: Manual Setup
+
+1. Create virtual environment:
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # Windows: .\venv\Scripts\activate
+   ```
+
+2. Install dependencies:
+   ```bash
+   pip install -e .
+   ```
+
+3. Create configuration:
+   ```bash
+   cp .env.example .env
+   # Edit .env and add your API keys
+   ```
+
+4. Create local config:
+   ```yaml
+   # config.local.yaml
+   paths:
+     blender_exe: "YOUR_BLENDER_PATH"
+   ```
+
+See [SETUP.md](SETUP.md) for detailed installation guide.
+
+## Usage
+
+### Complete Pipeline
+
 ```bash
-python -m venv venv
-.\.venv\Scripts\activate  # Windows
-```
-
-3. Install dependencies:
-```bash
-pip install -e .
-# or
-pip install -r requirements.txt
-```
-
-4. Set environment variables:
-```bash
-# Create .env file
-GEMINI_API_KEY=your_gemini_api_key_here
-OPENAI_API_KEY=your_openai_api_key_here
-```
-
-## Quick Start
-
-### Phase 1: Core Pipeline
-
-Run the complete pipeline:
-
-```bash
-# 1. Ingest data and create manifest
-vfscore ingest
-
-# 2. Preprocess ground truth photos
-vfscore preprocess-gt
-
-# 3. Render candidate objects
-vfscore render-cand
-
-# 4. Package scoring units
-vfscore package
-
-# 5. Score with LLM
-vfscore score --model gemini --repeats 3
-
-# 6. Aggregate scores
-vfscore aggregate
-
-# 7. Generate report
-vfscore report
-```
-
-Or run all steps at once:
-```bash
+# Run all steps at once
 vfscore run-all
+
+# Or run steps individually:
+vfscore ingest              # 1. Scan dataset
+vfscore preprocess-gt       # 2. Preprocess GT photos
+vfscore render-cand         # 3. Render candidates
+vfscore package             # 4. Create scoring packets
+vfscore score               # 5. Score with LLM
+vfscore aggregate           # 6. Aggregate scores
+vfscore report              # 7. Generate HTML report
 ```
 
-## Configuration
+### Common Options
 
-Edit `vfscore/config.yaml` to customize:
-- Camera positions and rendering settings
-- LLM model selection and parameters
-- Scoring rubric weights
-- Output formats
+```bash
+# Fast rendering mode (128 samples instead of 256)
+vfscore run-all --fast
+
+# Use different model
+vfscore score --model gemini-2.5-flash
+
+# More repeats for higher confidence
+vfscore score --repeats 5
+
+# View help
+vfscore --help
+vfscore score --help
+```
 
 ## Scoring Rubric
 
@@ -146,31 +206,62 @@ outputs/
 
 ## Development
 
+### Contributing
+
+We welcome contributions! Please read [CONTRIBUTING.md](CONTRIBUTING.md) for:
+- Development setup
+- Code style guidelines
+- Testing procedures
+- Pull request process
+
 ### Running Tests
+
 ```bash
 pytest tests/
 ```
 
 ### Code Formatting
+
 ```bash
 black src/
 ruff check src/
-```
-
-### Type Checking
-```bash
 mypy src/
 ```
+
+## Documentation
+
+- [SETUP.md](SETUP.md) - Detailed setup guide
+- [CONTRIBUTING.md](CONTRIBUTING.md) - Developer guide
+- [QUICKSTART.md](QUICKSTART.md) - Quick reference
+- [PROJECT_STATUS.md](PROJECT_STATUS.md) - Implementation status
 
 ## Roadmap
 
 - [x] Phase 1: Core pipeline (preprocessing, rendering, LLM scoring, basic reports)
-- [ ] Phase 2: Sentinel trials, confidence metrics, full HTML reporting
-- [ ] Phase 3: Multi-model ensemble, advanced QC, optimization
+- [ ] Phase 2: Sentinel trials, multi-model ensemble, enhanced reporting
+- [ ] Phase 3: Web interface, cloud deployment, advanced analytics
+
+## Troubleshooting
+
+### Common Issues
+
+**"GEMINI_API_KEY not set"**
+- Ensure `.env` file exists with your API key
+- Run `python setup.py` to create it interactively
+
+**"Blender not found"**
+- Update `blender_exe` path in `config.local.yaml`
+- Run `python setup.py` to auto-detect Blender
+
+**Import errors**
+- Make sure virtual environment is activated
+- Run `pip install -e .` from project root
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for more troubleshooting tips.
 
 ## License
 
-MIT License
+MIT License - see LICENSE file for details.
 
 ## Citation
 
@@ -179,12 +270,17 @@ If you use VFScore in your research, please cite:
 ```bibtex
 @software{vfscore2025,
   title={VFScore: Automated Visual Fidelity Scoring for 3D Generation},
-  author={Francesca Falcone and Mattia Tagliente},
+  author={Tagliente, Mattia},
   year={2025},
-  url={https://github.com/mattiatagliente/VFScore}
+  url={https://github.com/mattiaTagliente/VFScore}
 }
 ```
 
-## Support
+## Contact
 
-For issues and questions, please open a GitHub issue.
+- **GitHub**: [github.com/mattiaTagliente/VFScore](https://github.com/mattiaTagliente/VFScore)
+- **Issues**: [github.com/mattiaTagliente/VFScore/issues](https://github.com/mattiaTagliente/VFScore/issues)
+
+## Acknowledgments
+
+Built with Python, Blender, Google Gemini, and lots of ☕️
