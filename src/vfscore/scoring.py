@@ -1,5 +1,11 @@
 """LLM scoring orchestration with repeats."""
 
+# Suppress gRPC warnings before any Google library imports
+import os
+os.environ["GRPC_VERBOSITY"] = "ERROR"
+os.environ["GLOG_minloglevel"] = "2"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
 import json
 from pathlib import Path
 from typing import Dict, List

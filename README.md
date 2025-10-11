@@ -117,16 +117,14 @@ Edit `vfscore/config.yaml` to customize:
 
 ## Scoring Rubric
 
-Visual fidelity is evaluated across 6 dimensions:
+Visual fidelity is evaluated across 4 dimensions:
 
 | Dimension | Weight | Description |
 |-----------|--------|-------------|
 | Color & Palette | 40% | Overall hue, saturation, brightness |
 | Material Finish | 25% | Metallic/dielectric, roughness, specular |
-| Texture Identity | 10% | Correct patterns, logos, prints |
-| Texture Scale & Placement | 15% | Scale, alignment, seams |
-| Shading Response | 5% | Highlight/contrast consistency |
-| Rendering Artifacts | 5% | Banding, aliasing, tiling issues |
+| Texture Identity | 15% | Correct patterns, logos, prints |
+| Texture Scale & Placement | 20% | Scale, alignment, seams |
 
 **Final Score**: Weighted sum [0-100]
 

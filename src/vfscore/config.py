@@ -54,16 +54,14 @@ class PreprocessConfig(BaseModel):
 class ScoringConfig(BaseModel):
     """LLM scoring configuration."""
 
-    models: List[str] = Field(default=["gemini"])
+    models: List[str] = Field(default=["gemini-2.5-pro"])
     repeats: int = 3
     rubric_weights: Dict[str, float] = Field(
         default={
             "color_palette": 40,
             "material_finish": 25,
-            "texture_identity": 10,
-            "texture_scale_placement": 15,
-            "shading_response": 5,
-            "rendering_artifacts": 5,
+            "texture_identity": 15,
+            "texture_scale_placement": 20,
         }
     )
     temperature: float = 0.0

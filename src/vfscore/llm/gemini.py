@@ -1,12 +1,18 @@
 """Google Gemini LLM client."""
 
-import json
+# IMPORTANT: Set gRPC logging environment variables BEFORE importing google libraries
 import os
+os.environ["GRPC_VERBOSITY"] = "ERROR"
+os.environ["GLOG_minloglevel"] = "2"
+os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+
+import json
 import time
 from pathlib import Path
 from typing import Any, Dict, List
 
 import google.generativeai as genai
+from google.generativeai.types import HarmCategory, HarmBlockThreshold
 from PIL import Image
 
 from vfscore.llm.base import BaseLLMClient
@@ -47,8 +53,16 @@ class GeminiClient(BaseLLMClient):
             generation_config={
                 "temperature": temperature,
                 "top_p": top_p,
-                "max_output_tokens": 2048,  # Increased for detailed analysis
-            }
+                "max_output_tokens": 8192,  # Increased to prevent truncated JSON
+                "response_mime_type": "application/json",
+            },
+            # Relax safety settings to avoid false positives
+            safety_settings={
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_NONE,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
+            },
         )
     
     def _call_api(
@@ -58,37 +72,28 @@ class GeminiClient(BaseLLMClient):
         image_paths: List[Path],
         max_retries: int = 3,
     ) -> str:
-        """Call Gemini API with retries."""
+        """Call Gemini API with retries and robust error handling."""
         
-        # Load images
-        images = []
-        for img_path in image_paths:
-            img = Image.open(img_path)
-            images.append(img)
+        images = [Image.open(p) for p in image_paths]
+        prompt_parts = [system_message, user_message] + images
         
-        # Build prompt parts: system + images + user message
-        prompt_parts = [
-            system_message,
-            "\n\n",
-            user_message,
-            "\n\nImages (in order):",
-        ]
-        
-        # Add images
-        for idx, img in enumerate(images):
-            prompt_parts.append(img)
-        
-        # Retry logic
         for attempt in range(max_retries):
             try:
                 response = self.model.generate_content(prompt_parts)
+                
+                # Handle cases where the model returns no content (e.g., safety block)
+                if not response.candidates or not response.candidates[0].content.parts:
+                    reason = "Unknown"
+                    if response.candidates:
+                        reason = response.candidates[0].finish_reason.name
+                    raise ValueError(f"API returned an empty response. Finish Reason: {reason}")
+                
                 return response.text
             
             except Exception as e:
                 if attempt < max_retries - 1:
                     wait_time = 2 ** attempt  # Exponential backoff
-                    print(f"API call failed (attempt {attempt + 1}/{max_retries}): {e}")
-                    print(f"Retrying in {wait_time}s...")
+                    print(f"API call failed (attempt {attempt + 1}/{max_retries}): {e}. Retrying in {wait_time}s...")
                     time.sleep(wait_time)
                 else:
                     raise RuntimeError(f"Gemini API failed after {max_retries} attempts: {e}")
@@ -99,32 +104,24 @@ class GeminiClient(BaseLLMClient):
         context: Dict[str, Any],
         rubric_weights: Dict[str, float],
     ) -> Dict[str, Any]:
-        """Score visual fidelity using Gemini 2.5 Pro."""
+        """Score visual fidelity with robust JSON parsing."""
         
-        # Build messages
         system_message = self._build_system_message()
         user_message = self._build_user_message(context, rubric_weights)
         
-        # Call API
         response_text = self._call_api(system_message, user_message, image_paths)
         
-        # Parse JSON response
         try:
-            # Try to extract JSON from response (in case there's extra text)
-            response_text = response_text.strip()
+            # Robustly find and parse the JSON block
+            json_start = response_text.find('{')
+            json_end = response_text.rfind('}') + 1
             
-            # Remove markdown code blocks if present
-            if response_text.startswith("```json"):
-                response_text = response_text[7:]
-            if response_text.startswith("```"):
-                response_text = response_text[3:]
-            if response_text.endswith("```"):
-                response_text = response_text[:-3]
-            
-            response_text = response_text.strip()
-            
-            result = json.loads(response_text)
-            
+            if json_start != -1 and json_end != -1:
+                clean_json_str = response_text[json_start:json_end]
+                result = json.loads(clean_json_str)
+            else:
+                raise json.JSONDecodeError("No JSON object found in response.", response_text, 0)
+
             # Validate structure
             required_keys = ["item_id", "subscores", "score", "rationale"]
             if not all(key in result for key in required_keys):
@@ -132,8 +129,9 @@ class GeminiClient(BaseLLMClient):
             
             return result
             
-        except json.JSONDecodeError as e:
-            raise ValueError(f"Failed to parse JSON response: {e}\nResponse: {response_text}")
+        except (json.JSONDecodeError, ValueError) as e:
+            # Raise with a more informative message for debugging
+            raise ValueError(f"Failed to decode or validate JSON from response. Error: {e}\n\nFull Response:\n{response_text}")
 
 
 if __name__ == "__main__":

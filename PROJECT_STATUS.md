@@ -99,7 +99,7 @@ VFScore/
 
 ### 5. LLM Scoring ✅
 - Gemini 2.0 Flash integration
-- 6-dimension rubric with configurable weights
+- 4-dimension rubric with configurable weights
 - Strict JSON schema enforcement
 - 3-repeat system for reliability
 - Exponential backoff retries
@@ -138,15 +138,12 @@ VFScore/
 ---
 
 ## Scoring Rubric
-
 | Dimension | Weight | Description |
 |-----------|--------|-------------|
 | Color & Palette | 40% | Hue, saturation, brightness match |
 | Material Finish | 25% | Metallic/dielectric, roughness, specular |
-| Texture Identity | 10% | Correct patterns, logos, prints |
-| Texture Scale & Placement | 15% | Scale, alignment, seams |
-| Shading Response | 5% | Highlight/shadow consistency |
-| Rendering Artifacts | 5% | Banding, aliasing, tiling |
+| Texture Identity | 15% | Correct patterns, logos, prints |
+| Texture Scale & Placement | 20% | Scale, alignment, seams |
 
 **Output**: Weighted score [0-100]
 

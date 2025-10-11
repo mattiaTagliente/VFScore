@@ -45,7 +45,7 @@ class BaseLLMClient(ABC):
     
     def _build_system_message(self) -> str:
         """Build system message for the LLM."""
-        return """You are a meticulous visual rater. Score only the **appearance fidelity** of a rendered 3D object labeled "CANDIDATE" against up to five real product photos labeled "GT #k". Focus on: color palette, material/BRDF, texture identity, texture scale/placement, shading response, and rendering artifacts.
+        return """You are a meticulous visual rater. Score only the **appearance fidelity** of a rendered 3D object labeled "CANDIDATE" against up to five real product photos labeled "GT #k". Focus on: color palette, material finish, texture identity, and texture scale/placement.
 
 **Ignore geometry/silhouette** and **ignore backgrounds** (backgrounds are blacked out). Compare the candidate to the **set** of GT images jointly. Use the rubric and weights. Return strict JSON only."""
     
@@ -70,13 +70,11 @@ Rubric (weights in percent):
 - material_finish: {rubric_weights["material_finish"]}
 - texture_identity: {rubric_weights["texture_identity"]}
 - texture_scale_placement: {rubric_weights["texture_scale_placement"]}
-- shading_response: {rubric_weights["shading_response"]}
-- rendering_artifacts: {rubric_weights["rendering_artifacts"]}
 
 Instructions:
 1) Assign each sub-score an integer in [0,100].
 2) Compute the weighted sum:
-   score = round({rubric_weights["color_palette"]/100}*color_palette + {rubric_weights["material_finish"]/100}*material_finish + {rubric_weights["texture_identity"]/100}*texture_identity + {rubric_weights["texture_scale_placement"]/100}*texture_scale_placement + {rubric_weights["shading_response"]/100}*shading_response + {rubric_weights["rendering_artifacts"]/100}*rendering_artifacts)
+   score = round({rubric_weights["color_palette"]/100}*color_palette + {rubric_weights["material_finish"]/100}*material_finish + {rubric_weights["texture_identity"]/100}*texture_identity + {rubric_weights["texture_scale_placement"]/100}*texture_scale_placement)
 3) Provide 2–4 short bullets explaining the main drivers. Do not mention geometry or silhouette.
 4) Confirm you compared images labeled "GT #k" (ground truth) against "CANDIDATE".
 5) Output exactly the following JSON, with no extra text:
@@ -87,9 +85,7 @@ Instructions:
     "color_palette": 0,
     "material_finish": 0,
     "texture_identity": 0,
-    "texture_scale_placement": 0,
-    "shading_response": 0,
-    "rendering_artifacts": 0
+    "texture_scale_placement": 0
   }},
   "score": 0,
   "rationale": ["...", "..."]
