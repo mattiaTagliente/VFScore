@@ -197,24 +197,36 @@ def score(
 @app.command()
 def aggregate(
     config_path: Path = typer.Option("config.yaml", help="Path to config file"),
+    latest_only: bool = typer.Option(False, "--latest-only", help="Use only the latest batch per item (default: use all batches)"),
+    batch_pattern: Optional[str] = typer.Option(None, "--batch-pattern", help="Filter batches containing this string in their name"),
+    after_date: Optional[str] = typer.Option(None, "--after", help="Filter batches after this date (YYYY-MM-DD format)"),
 ) -> None:
     """
     Aggregate scores: compute medians and confidence metrics.
-    
+
+    By default, aggregates across ALL batches for better statistical assessment.
+    Use --latest-only to aggregate only the most recent batch per item.
+
     Reads:
-    - outputs/llm_calls/<model>/<item_id>/rep_*.json
-    
+    - outputs/llm_calls/<model>/<item_id>/batch_*/rep_*.json
+    - outputs/llm_calls/<model>/<item_id>/batch_*/batch_info.json
+
     Creates:
     - outputs/results/per_item.jsonl
     - outputs/results/per_item.csv
     """
     from vfscore.aggregate import run_aggregation
-    
+
     console.print(Panel.fit("[bold cyan]Step 6: Score Aggregation[/bold cyan]"))
     config = get_config()
-    
+
     try:
-        run_aggregation(config)
+        run_aggregation(
+            config,
+            latest_only=latest_only,
+            batch_pattern=batch_pattern,
+            after_date=after_date,
+        )
         console.print("[green]✓[/green] Scores aggregated")
     except Exception as e:
         console.print(f"[red]✗[/red] Aggregation failed: {e}")

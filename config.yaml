@@ -38,6 +38,8 @@ scoring:
     texture_scale_placement: 20
   temperature: 0.0
   top_p: 1.0
+  use_batch_mode: true  # Create timestamped batches to accumulate results over time
+  results_dir: null  # null = use default (outputs/llm_calls), or set path for shared directory
 
 sentinels:
   enabled: false  # Phase 2 feature

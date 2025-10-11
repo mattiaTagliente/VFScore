@@ -3,8 +3,9 @@
 import csv
 import json
 import math
+from datetime import datetime
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import numpy as np
 from rich.console import Console
@@ -13,6 +14,88 @@ from rich.progress import track
 from vfscore.config import Config
 
 console = Console()
+
+
+def discover_batch_directories(item_dir: Path) -> List[Path]:
+    """Discover all batch directories within an item directory.
+
+    Supports both new batch structure and legacy (no batch) structure.
+
+    Args:
+        item_dir: Path to item directory (e.g., outputs/llm_calls/gemini/558736/)
+
+    Returns:
+        List of batch directory paths (or [item_dir] for legacy structure)
+    """
+    if not item_dir.exists():
+        return []
+
+    # Look for batch directories (batch_*)
+    batch_dirs = sorted([d for d in item_dir.iterdir() if d.is_dir() and d.name.startswith("batch_")])
+
+    if batch_dirs:
+        return batch_dirs
+
+    # Legacy structure: item_dir itself contains rep_*.json files
+    if list(item_dir.glob("rep_*.json")):
+        return [item_dir]
+
+    return []
+
+
+def filter_batch_directories(
+    batch_dirs: List[Path],
+    latest_only: bool = False,
+    batch_pattern: Optional[str] = None,
+    after_date: Optional[str] = None,
+) -> List[Path]:
+    """Filter batch directories based on criteria.
+
+    Args:
+        batch_dirs: List of batch directory paths
+        latest_only: If True, return only the latest batch
+        batch_pattern: Filter batches containing this string in their name
+        after_date: Filter batches after this date (YYYY-MM-DD format)
+
+    Returns:
+        Filtered list of batch directories
+    """
+    filtered = batch_dirs
+
+    # Apply pattern filter
+    if batch_pattern:
+        filtered = [d for d in filtered if batch_pattern in d.name]
+
+    # Apply date filter
+    if after_date:
+        try:
+            cutoff_date = datetime.strptime(after_date, "%Y-%m-%d")
+            filtered = []
+            for d in batch_dirs:
+                # Extract timestamp from batch directory name
+                # Format: batch_YYYYMMDD_HHMMSS_user_<username>
+                if d.name.startswith("batch_"):
+                    try:
+                        date_str = d.name.split("_")[1]  # YYYYMMDD
+                        batch_date = datetime.strptime(date_str, "%Y%m%d")
+                        if batch_date >= cutoff_date:
+                            filtered.append(d)
+                    except (IndexError, ValueError):
+                        # Can't parse date, skip
+                        continue
+                else:
+                    # Legacy batch, include by default
+                    filtered.append(d)
+        except ValueError:
+            console.print(f"[yellow]Warning: Invalid date format '{after_date}', ignoring date filter[/yellow]")
+            filtered = batch_dirs
+
+    # Apply latest_only filter
+    if latest_only and filtered:
+        # Sort by directory name (timestamp is embedded)
+        filtered = [sorted(filtered, reverse=True)[0]]
+
+    return filtered
 
 
 def load_repeats(item_dir: Path, model: str) -> List[Dict]:
@@ -84,68 +167,153 @@ def aggregate_model_results(results: List[Dict]) -> Dict:
     }
 
 
-def aggregate_item(item_id: str, llm_calls_dir: Path, models: List[str]) -> Dict:
-    """Aggregate results for a single item across all models."""
-    
+def aggregate_item(
+    item_id: str,
+    llm_calls_dir: Path,
+    models: List[str],
+    latest_only: bool = False,
+    batch_pattern: Optional[str] = None,
+    after_date: Optional[str] = None,
+) -> Dict:
+    """Aggregate results for a single item across all models and batches.
+
+    Args:
+        item_id: Item identifier
+        llm_calls_dir: Base directory containing LLM call results
+        models: List of model names
+        latest_only: If True, use only the latest batch per item
+        batch_pattern: Filter batches containing this string
+        after_date: Filter batches after this date (YYYY-MM-DD)
+
+    Returns:
+        Aggregated results dictionary
+    """
+
     model_results = {}
     all_scores = []
-    
+    batch_info_list = []
+
     for model in models:
         item_dir = llm_calls_dir / model / item_id
-        
+
         if not item_dir.exists():
             console.print(f"[yellow]Warning: No results for {item_id} with {model}[/yellow]")
             continue
-        
-        repeats = load_repeats(item_dir, model)
-        
-        if not repeats:
+
+        # Discover all batch directories for this item
+        batch_dirs = discover_batch_directories(item_dir)
+
+        # Apply filters
+        batch_dirs = filter_batch_directories(
+            batch_dirs,
+            latest_only=latest_only,
+            batch_pattern=batch_pattern,
+            after_date=after_date,
+        )
+
+        if not batch_dirs:
+            console.print(f"[yellow]Warning: No batches found for {item_id} with {model}[/yellow]")
+            continue
+
+        # Collect repeats from all batches
+        all_repeats = []
+        for batch_dir in batch_dirs:
+            repeats = load_repeats(batch_dir, model)
+            all_repeats.extend(repeats)
+
+            # Load batch metadata if available
+            batch_info_path = batch_dir / "batch_info.json"
+            if batch_info_path.exists():
+                try:
+                    with open(batch_info_path, "r", encoding="utf-8") as f:
+                        batch_info = json.load(f)
+                        batch_info["batch_dir"] = batch_dir.name
+                        batch_info_list.append(batch_info)
+                except Exception:
+                    pass
+
+        if not all_repeats:
             console.print(f"[yellow]Warning: No repeats found for {item_id} with {model}[/yellow]")
             continue
-        
-        agg = aggregate_model_results(repeats)
+
+        # Aggregate across all batches
+        agg = aggregate_model_results(all_repeats)
         model_results[model] = agg
-        
+
         # Collect all scores for confidence
         all_scores.extend(agg["repeats"])
-    
+
     # Compute final score (mean of model medians)
     if model_results:
         model_medians = [agg["median"] for agg in model_results.values()]
         final_score = np.mean(model_medians)
     else:
         final_score = 0.0
-    
+
     # Compute confidence from all scores
     mad = compute_mad(all_scores)
     confidence = compute_confidence(mad)
-    
-    return {
+
+    result = {
         "item_id": item_id,
         "scores": model_results,
         "final_score": round(final_score, 2),
         "confidence": round(confidence, 2),
         "mad": round(mad, 2),
         "flags": [],
+        "n_batches": len(set([b["batch_dir"] for b in batch_info_list if "batch_dir" in b])) if batch_info_list else 0,
+        "n_total_repeats": len(all_scores),
     }
 
+    # Add batch info for provenance
+    if batch_info_list:
+        result["batches"] = batch_info_list
 
-def run_aggregation(config: Config) -> None:
-    """Aggregate all scores and create results files."""
-    
-    llm_calls_dir = config.paths.out_dir / "llm_calls"
-    
+    return result
+
+
+def run_aggregation(
+    config: Config,
+    latest_only: bool = False,
+    batch_pattern: Optional[str] = None,
+    after_date: Optional[str] = None,
+) -> None:
+    """Aggregate all scores and create results files.
+
+    Args:
+        config: Configuration object
+        latest_only: If True, use only the latest batch per item (default: False, use all batches)
+        batch_pattern: Filter batches containing this string in their name
+        after_date: Filter batches after this date (YYYY-MM-DD format)
+    """
+
+    # Determine LLM calls directory
+    if config.scoring.results_dir:
+        llm_calls_dir = Path(config.scoring.results_dir)
+        console.print(f"[cyan]Using shared results directory: {llm_calls_dir}[/cyan]")
+    else:
+        llm_calls_dir = config.paths.out_dir / "llm_calls"
+
     if not llm_calls_dir.exists():
         raise FileNotFoundError(f"LLM calls directory not found: {llm_calls_dir}")
-    
+
     # Get available models
     models = [d.name for d in llm_calls_dir.iterdir() if d.is_dir()]
-    
+
     if not models:
         raise ValueError("No model results found. Run 'vfscore score' first.")
-    
-    console.print(f"\n[bold]Aggregating results for models: {', '.join(models)}[/bold]")
-    
+
+    # Print aggregation mode
+    if latest_only:
+        console.print(f"\n[bold]Aggregating results (LATEST BATCH ONLY) for models: {', '.join(models)}[/bold]")
+    else:
+        console.print(f"\n[bold]Aggregating results (ALL BATCHES) for models: {', '.join(models)}[/bold]")
+
+    if batch_pattern:
+        console.print(f"[cyan]Filtering batches with pattern: '{batch_pattern}'[/cyan]")
+    if after_date:
+        console.print(f"[cyan]Filtering batches after: {after_date}[/cyan]")
+
     # Get all item IDs
     item_ids = set()
     for model in models:
@@ -153,16 +321,23 @@ def run_aggregation(config: Config) -> None:
         for item_dir in model_dir.iterdir():
             if item_dir.is_dir():
                 item_ids.add(item_dir.name)
-    
+
     item_ids = sorted(item_ids)
-    
+
     console.print(f"Found {len(item_ids)} items to aggregate")
-    
+
     # Aggregate each item
     aggregated_results = []
-    
+
     for item_id in track(item_ids, description="Aggregating"):
-        result = aggregate_item(item_id, llm_calls_dir, models)
+        result = aggregate_item(
+            item_id,
+            llm_calls_dir,
+            models,
+            latest_only=latest_only,
+            batch_pattern=batch_pattern,
+            after_date=after_date,
+        )
         aggregated_results.append(result)
     
     # Load manifest for category info
@@ -202,15 +377,15 @@ def run_aggregation(config: Config) -> None:
     
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        
+
         # Header
-        header = ["item_id", "l1", "l2", "l3", "n_gt", "final_score", "confidence", "mad"]
+        header = ["item_id", "l1", "l2", "l3", "n_gt", "final_score", "confidence", "mad", "n_batches", "n_total_repeats"]
         for model in models:
             header.append(f"{model}_median")
         header.append("flags")
-        
+
         writer.writerow(header)
-        
+
         # Rows
         for result in aggregated_results:
             row = [
@@ -222,16 +397,18 @@ def run_aggregation(config: Config) -> None:
                 result["final_score"],
                 result["confidence"],
                 result["mad"],
+                result.get("n_batches", 0),
+                result.get("n_total_repeats", 0),
             ]
-            
+
             for model in models:
                 if model in result["scores"]:
                     row.append(result["scores"][model]["median"])
                 else:
                     row.append("")
-            
+
             row.append(",".join(result["flags"]))
-            
+
             writer.writerow(row)
     
     console.print(f"[green]Saved CSV: {csv_path}[/green]")

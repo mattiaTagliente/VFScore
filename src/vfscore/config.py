@@ -66,6 +66,8 @@ class ScoringConfig(BaseModel):
     )
     temperature: float = 0.0
     top_p: float = 1.0
+    use_batch_mode: bool = True
+    results_dir: Path | None = None
 
 
 class SentinelsConfig(BaseModel):

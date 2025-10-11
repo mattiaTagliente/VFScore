@@ -6,7 +6,11 @@ os.environ["GRPC_VERBOSITY"] = "ERROR"
 os.environ["GLOG_minloglevel"] = "2"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
 
+import getpass
+import hashlib
 import json
+import socket
+from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 
@@ -17,6 +21,72 @@ from vfscore.config import Config
 from vfscore.llm.gemini import GeminiClient
 
 console = Console()
+
+
+def create_batch_directory_name() -> str:
+    """Create a timestamped batch directory name with username.
+
+    Format: batch_YYYYMMDD_HHMMSS_user_<username>
+
+    Returns:
+        Batch directory name string
+    """
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    try:
+        username = getpass.getuser()
+    except Exception:
+        username = "unknown"
+
+    # Sanitize username (remove special chars that could be problematic in filenames)
+    username = "".join(c if c.isalnum() or c in "-_" else "_" for c in username)
+
+    return f"batch_{timestamp}_user_{username}"
+
+
+def create_batch_metadata(
+    model: str,
+    repeats: int,
+    config: Config,
+) -> Dict:
+    """Create batch metadata for provenance tracking.
+
+    Args:
+        model: Model name used for scoring
+        repeats: Number of repeats per item
+        config: Configuration object
+
+    Returns:
+        Dictionary with batch metadata
+    """
+    try:
+        hostname = socket.gethostname()
+    except Exception:
+        hostname = "unknown"
+
+    try:
+        username = getpass.getuser()
+    except Exception:
+        username = "unknown"
+
+    # Create config hash for tracking configuration changes
+    config_str = json.dumps({
+        "rubric_weights": config.scoring.rubric_weights,
+        "temperature": config.scoring.temperature,
+        "top_p": config.scoring.top_p,
+    }, sort_keys=True)
+    config_hash = hashlib.sha256(config_str.encode()).hexdigest()[:8]
+
+    return {
+        "timestamp": datetime.now().isoformat(),
+        "user": username,
+        "hostname": hostname,
+        "model": model,
+        "repeats": repeats,
+        "config_hash": config_hash,
+        "rubric_weights": config.scoring.rubric_weights,
+        "temperature": config.scoring.temperature,
+        "top_p": config.scoring.top_p,
+    }
 
 
 def load_packets(labels_dir: Path) -> List[Dict]:
@@ -111,39 +181,66 @@ def run_scoring(
     repeats: int = 3,
 ) -> None:
     """Run LLM scoring for all items."""
-    
+
     # Load packets
     labels_dir = config.paths.out_dir / "labels"
     if not labels_dir.exists():
         raise FileNotFoundError(f"Labels directory not found: {labels_dir}")
-    
+
     packets = load_packets(labels_dir)
-    
+
     if not packets:
         raise ValueError("No scoring packets found. Run 'vfscore package' first.")
-    
+
     console.print(f"\n[bold]Scoring {len(packets)} items with {model} ({repeats} repeats each)...[/bold]")
-    
+
     # Initialize LLM client
     client = get_llm_client(model, config)
     console.print(f"[cyan]Using model: {client.model_name}[/cyan]")
-    
+
+    # Determine base results directory
+    if config.scoring.results_dir:
+        base_llm_calls_dir = Path(config.scoring.results_dir)
+        console.print(f"[cyan]Using shared results directory: {base_llm_calls_dir}[/cyan]")
+    else:
+        base_llm_calls_dir = config.paths.out_dir / "llm_calls"
+
+    # Create batch directory if batch mode is enabled
+    batch_dir_name = None
+    batch_metadata = None
+
+    if config.scoring.use_batch_mode:
+        batch_dir_name = create_batch_directory_name()
+        batch_metadata = create_batch_metadata(model, repeats, config)
+        console.print(f"[cyan]Batch mode enabled: {batch_dir_name}[/cyan]")
+
+    # Normalize model name for directory
+    model_dir_name = model.replace("gemini-", "").replace("-", "_")
+    if not model_dir_name:
+        model_dir_name = "gemini"
+
     # Score each item
     total_calls = 0
     success_items = 0
-    
+
     for packet in track(packets, description=f"Scoring with {model}"):
         item_id = packet["item_id"]
-        
-        # Create output directory for this item
-        # Normalize model name for directory
-        model_dir_name = model.replace("gemini-", "").replace("-", "_")
-        if not model_dir_name:
-            model_dir_name = "gemini"
-        
-        output_dir = config.paths.out_dir / "llm_calls" / model_dir_name / item_id
+
+        # Build output directory path
+        if config.scoring.use_batch_mode:
+            output_dir = base_llm_calls_dir / model_dir_name / item_id / batch_dir_name
+        else:
+            # Legacy mode: no batch directory
+            output_dir = base_llm_calls_dir / model_dir_name / item_id
+
         output_dir.mkdir(parents=True, exist_ok=True)
-        
+
+        # Save batch metadata once per item
+        if config.scoring.use_batch_mode and batch_metadata:
+            batch_info_path = output_dir / "batch_info.json"
+            with open(batch_info_path, "w", encoding="utf-8") as f:
+                json.dump(batch_metadata, f, indent=2, ensure_ascii=False)
+
         try:
             results = score_item_with_repeats(
                 packet=packet,
@@ -152,15 +249,18 @@ def run_scoring(
                 repeats=repeats,
                 output_dir=output_dir,
             )
-            
+
             if results:
                 total_calls += len(results)
                 success_items += 1
-        
+
         except Exception as e:
             console.print(f"[red]Failed to score {item_id}: {e}[/red]")
-    
+
     console.print(f"[green]Completed {total_calls} API calls for {success_items}/{len(packets)} items[/green]")
+
+    if config.scoring.use_batch_mode:
+        console.print(f"[cyan]Results saved in batch: {batch_dir_name}[/cyan]")
 
 
 if __name__ == "__main__":
