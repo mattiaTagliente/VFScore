@@ -56,7 +56,7 @@ cd VFScore
 2. Create virtual environment:
 ```bash
 python -m venv venv
-.\venv\Scripts\activate  # Windows
+.\.venv\Scripts\activate  # Windows
 ```
 
 3. Install dependencies:
@@ -179,9 +179,9 @@ If you use VFScore in your research, please cite:
 ```bibtex
 @software{vfscore2025,
   title={VFScore: Automated Visual Fidelity Scoring for 3D Generation},
-  author={Your Name},
+  author={Francesca Falcone and Mattia Tagliente},
   year={2025},
-  url={https://github.com/yourusername/VFScore}
+  url={https://github.com/mattiatagliente/VFScore}
 }
 ```
 
