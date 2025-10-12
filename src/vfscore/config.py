@@ -96,6 +96,14 @@ class Phase1Config(BaseModel):
     basic_reporting: bool = True
 
 
+class TranslationConfig(BaseModel):
+    """Translation configuration."""
+
+    enabled: bool = True
+    model: str = "gemini-2.5-flash"
+    cache_translations: bool = True
+
+
 class Config(BaseModel):
     """Main configuration model."""
 
@@ -106,6 +114,7 @@ class Config(BaseModel):
     sentinels: SentinelsConfig = Field(default_factory=SentinelsConfig)
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     phase_1_features: Phase1Config = Field(default_factory=Phase1Config)
+    translation: TranslationConfig = Field(default_factory=TranslationConfig)
 
     @classmethod
     def load(cls, config_path: Path | str = "config.yaml") -> "Config":

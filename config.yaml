@@ -46,6 +46,11 @@ sentinels:
   positive_threshold: 85
   negative_threshold: 25
 
+translation:
+  enabled: true  # Enable Italian translation of LLM rationales
+  model: gemini-2.5-flash  # Fast and cost-effective model for translation
+  cache_translations: true  # Cache translations to avoid re-translating
+
 logging:
   level: INFO
   save_prompts: true

@@ -2,9 +2,12 @@
 
 # Suppress gRPC/Google library warnings before any imports
 import os
-os.environ["GRPC_VERBOSITY"] = "ERROR"
+os.environ["GRPC_VERBOSITY"] = "NONE"  # Must be NONE, not ERROR
+os.environ["GRPC_TRACE"] = ""  # Disable all tracing
+os.environ["GRPC_PYTHON_LOG_LEVEL"] = "ERROR"
 os.environ["GLOG_minloglevel"] = "2"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["GOOGLE_LOGGING_VERBOSITY"] = "3"
 
 from pathlib import Path
 from typing import Optional
@@ -234,6 +237,42 @@ def aggregate(
 
 
 @app.command()
+def translate(
+    model: str = typer.Option("gemini-2.5-flash", help="Translation model (default: gemini-2.5-flash)"),
+    force: bool = typer.Option(False, "--force", help="Force re-translation even if translations exist"),
+    config_path: Path = typer.Option("config.yaml", help="Path to config file"),
+) -> None:
+    """
+    Translate LLM rationales from English to Italian.
+
+    Uses Gemini 2.5 Flash for fast and cost-effective translation.
+    Translations are cached to avoid re-translating.
+
+    Reads:
+    - outputs/llm_calls/<model>/<item_id>/batch_*/rep_*.json
+
+    Creates:
+    - outputs/llm_calls/<model>/<item_id>/batch_*/rep_*_it.json
+    """
+    from vfscore.translate import run_translation
+
+    console.print(Panel.fit("[bold cyan]Step 6.5: Translation (English → Italian)[/bold cyan]"))
+    config = get_config()
+
+    # Check if translation is enabled
+    if not config.translation.enabled:
+        console.print("[yellow]Translation is disabled in config. Skipping...[/yellow]")
+        return
+
+    try:
+        run_translation(config, model=model, force=force)
+        console.print(f"[green]✓[/green] Translation complete using {model}")
+    except Exception as e:
+        console.print(f"[red]✗[/red] Translation failed: {e}")
+        raise typer.Exit(code=1)
+
+
+@app.command()
 def report(
     config_path: Path = typer.Option("config.yaml", help="Path to config file"),
 ) -> None:
@@ -265,19 +304,21 @@ def run_all(
     model: str = typer.Option("gemini-2.5-pro", help="LLM model to use"),
     repeats: int = typer.Option(3, help="Number of repeats per item"),
     fast: bool = typer.Option(False, help="Fast rendering mode"),
+    skip_translation: bool = typer.Option(False, "--skip-translation", help="Skip translation step"),
     config_path: Path = typer.Option("config.yaml", help="Path to config file"),
 ) -> None:
     """
-    Run the complete pipeline: ingest → preprocess → render → score → report.
-    
+    Run the complete pipeline: ingest → preprocess → render → score → translate → report.
+
     Uses Gemini 2.5 Pro by default for best visual reasoning quality.
+    Automatically translates results to Italian (can be skipped with --skip-translation).
     """
     console.print(Panel.fit("[bold magenta]VFScore Complete Pipeline[/bold magenta]"))
     console.print(f"[cyan]Model: {model}[/cyan]")
     console.print(f"[cyan]Repeats: {repeats}[/cyan]")
     if fast:
         console.print("[yellow]Fast rendering mode enabled[/yellow]")
-    
+
     # Run all steps in sequence
     steps = [
         ("ingest", lambda: ingest(config_path)),
@@ -286,16 +327,22 @@ def run_all(
         ("package", lambda: package(config_path)),
         ("score", lambda: score(model, repeats, config_path)),
         ("aggregate", lambda: aggregate(config_path)),
-        ("report", lambda: report(config_path)),
     ]
-    
+
+    # Add translation step if not skipped
+    if not skip_translation:
+        steps.append(("translate", lambda: translate(config_path=config_path)))
+
+    # Always end with report
+    steps.append(("report", lambda: report(config_path)))
+
     for step_name, step_func in steps:
         try:
             step_func()
         except Exception as e:
             console.print(f"[red]Pipeline stopped at: {step_name}[/red]")
             raise typer.Exit(code=1)
-    
+
     console.print("\n[bold green]✓ Pipeline complete![/bold green]")
 
 

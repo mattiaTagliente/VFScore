@@ -2,9 +2,12 @@
 
 # IMPORTANT: Set gRPC logging environment variables BEFORE importing google libraries
 import os
-os.environ["GRPC_VERBOSITY"] = "ERROR"
+os.environ["GRPC_VERBOSITY"] = "NONE"  # Must be NONE, not ERROR
+os.environ["GRPC_TRACE"] = ""  # Disable all tracing
+os.environ["GRPC_PYTHON_LOG_LEVEL"] = "ERROR"
 os.environ["GLOG_minloglevel"] = "2"
 os.environ["TF_CPP_MIN_LOG_LEVEL"] = "3"
+os.environ["GOOGLE_LOGGING_VERBOSITY"] = "3"
 
 import json
 import time

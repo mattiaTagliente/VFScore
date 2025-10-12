@@ -27,7 +27,8 @@ cp .env.example .env      # Add your GEMINI_API_KEY
 ```bash
 # Run complete pipeline
 vfscore run-all
-vfscore run-all --fast    # Faster rendering (128 samples vs 256)
+vfscore run-all --fast              # Faster rendering (128 samples vs 256)
+vfscore run-all --skip-translation  # Skip translation step
 
 # Run individual pipeline steps
 vfscore ingest            # Scan datasets, create manifest
@@ -36,13 +37,19 @@ vfscore render-cand       # Render 3D candidates with Blender
 vfscore package           # Create scoring packets
 vfscore score             # Score with LLM (default: gemini-2.5-pro)
 vfscore aggregate         # Aggregate scores across batches
-vfscore report            # Generate HTML report
+vfscore translate         # Translate rationales to Italian
+vfscore report            # Generate bilingual HTML report
 
 # Scoring options
 vfscore score --model gemini-2.5-flash --repeats 5
 vfscore aggregate --latest-only          # Use only latest batch
 vfscore aggregate --batch-pattern "user_mattia"  # Filter by user
 vfscore aggregate --after 2025-10-01     # Filter by date
+
+# Translation options
+vfscore translate                        # Translate new results
+vfscore translate --force                # Force re-translation
+vfscore translate --model gemini-2.5-flash
 ```
 
 ### Testing and Quality
@@ -58,7 +65,69 @@ mypy src/                    # Type checking
 
 ## Critical Architecture Concepts
 
-### 1. Two-Layer Configuration System
+### 1. Bilingual Translation System (NEW)
+
+**Critical**: The scoring system now supports automatic English → Italian translation of LLM rationales:
+
+#### Translation Architecture
+- **Translation Client** (`src/vfscore/llm/translator.py`): Lightweight wrapper around Gemini 2.5 Flash
+- **Translation Orchestration** (`src/vfscore/translate.py`): Discovers and translates scoring results
+- **Caching Strategy**: Translations saved as `rep_*_it.json` alongside `rep_*.json`
+- **Report Integration** (`src/vfscore/report.py`): Loads both languages, provides interactive switcher
+
+#### Translation File Format
+```
+outputs/llm_calls/gemini-2.5-pro/558736/batch_XXX/
+├── rep_1.json       # Original English
+├── rep_1_it.json    # Italian translation
+├── rep_2.json
+├── rep_2_it.json
+└── batch_info.json
+```
+
+**Translation JSON Structure**:
+```json
+{
+  "item_id": "558736",
+  "rationale_it": ["translated string 1", "translated string 2", ...],
+  "translation_model": "gemini-2.5-flash",
+  "translation_timestamp": "2025-01-12T14:30:00"
+}
+```
+
+#### Configuration
+```yaml
+translation:
+  enabled: true                # Enable Italian translation
+  model: gemini-2.5-flash      # Fast and cost-effective
+  cache_translations: true     # Cache to avoid re-translation
+```
+
+#### Key Functions
+- `TranslatorClient.translate_rationale(rationale_en: List[str]) -> List[str]`: Translates list of strings
+- `run_translation(config, model, force)`: Main translation orchestration
+- `load_rationale_with_translation(llm_result_dir)`: Loads English + Italian rationales
+- `discover_result_files(llm_calls_dir)`: Finds all `rep_*.json` files across batches
+- `needs_translation(result_file)`: Checks if translation needed (caching logic)
+
+#### Pipeline Integration
+- **Automatic mode**: `vfscore run-all` includes translation after aggregation
+- **Manual mode**: `vfscore translate` runs translation separately
+- **Skip mode**: `vfscore run-all --skip-translation` skips translation step
+
+#### Report Features
+- **Language Switcher**: Top-right toggle in HTML report (English | Italiano)
+- **Dynamic Content**: JavaScript switches visibility without page reload
+- **Persistent Preference**: Language choice saved in browser localStorage
+- **Fallback**: Shows English + warning if Italian translation missing
+
+#### Why This Matters
+- Translations are **cached** - run `vfscore translate` once, use forever
+- **No overwriting** - translations are separate files (`rep_*_it.json`)
+- **Batch-aware** - works seamlessly with multi-user batch system
+- **Configurable** - can be enabled/disabled via config
+
+### 2. Two-Layer Configuration System
 
 The project uses a **two-layer configuration** to separate shared defaults from machine-specific settings:
 
@@ -73,7 +142,7 @@ Implementation in `src/vfscore/config.py`:
 
 **Why this matters**: Never commit `config.local.yaml` or hardcode local paths in `config.yaml`. Always use `config.local.yaml` for machine-specific settings.
 
-### 2. Batch System for Multi-User Collaboration (NEW)
+### 3. Batch System for Multi-User Collaboration
 
 **Critical**: The scoring system uses **self-describing batch directories** to accumulate results over time without overwriting:
 
@@ -106,7 +175,7 @@ scoring:
 3. Run `vfscore aggregate` → automatically merges all batches
 4. No merge conflicts (each batch is independent with embedded metadata)
 
-### 3. Pipeline Architecture
+### 4. Pipeline Architecture
 
 The pipeline is a **7-step sequential process** orchestrated through CLI commands:
 
@@ -134,7 +203,7 @@ datasets/gens/*.glb → ────────→ render-cand  → [Candidate 
 
 **Data flow**: Each step reads from `outputs/` of previous step and writes to its own subdirectory. Pipeline state is implicit (file existence).
 
-### 4. LLM Client Abstraction
+### 5. LLM Client Abstraction
 
 **Base class**: `src/vfscore/llm/base.py:BaseLLMClient`
 - Abstract interface for LLM vision clients
@@ -152,7 +221,7 @@ datasets/gens/*.glb → ────────→ render-cand  → [Candidate 
 3. Update `scoring.py:get_llm_client()` to support new model
 4. Add model to `config.yaml:scoring.models` list
 
-### 5. Scoring Rubric
+### 6. Scoring Rubric
 
 Visual fidelity is scored across **4 weighted dimensions**:
 
@@ -244,6 +313,148 @@ for batch_dir in batch_dirs:
 # This is handled automatically by scoring.py when use_batch_mode=true
 # Each run creates: batch_YYYYMMDD_HHMMSS_user_<username>/
 ```
+
+## Documentation Maintenance (CRITICAL)
+
+**IMPORTANT**: After every significant change, you MUST update the documentation following this structure.
+
+### Documentation Structure
+
+VFScore uses a **3-file documentation system**:
+
+1. **`README.md`** (Main entry point - ~300 lines)
+   - Project overview and quick start
+   - Features list and key capabilities
+   - Quick usage examples
+   - Links to detailed guides
+   - **Update when**: Adding major features, changing quick start process, modifying installation
+
+2. **`GUIDE.md`** (Comprehensive guide - ~900 lines)
+   - Complete installation guide (interactive + manual)
+   - Full pipeline documentation
+   - Detailed configuration reference
+   - Bilingual reports section
+   - Development guide (code style, adding features)
+   - Troubleshooting guide
+   - Contributing guidelines
+   - **Update when**: Adding CLI commands, modifying config structure, adding features, changing workflows
+
+3. **`CHANGELOG.md`** (Version history)
+   - Chronological record of all changes
+   - Follows [Keep a Changelog](https://keepachangelog.com/) format
+   - Sections: Added, Changed, Fixed, Deprecated, Removed
+   - **Update when**: ANY change that affects users (always!)
+
+### When to Update Documentation
+
+**ALWAYS update documentation when you:**
+- ✅ Add/modify CLI commands or options
+- ✅ Add/change configuration options in `config.yaml`
+- ✅ Add new modules or significant functionality
+- ✅ Change file structure or output locations
+- ✅ Modify workflows or usage patterns
+- ✅ Fix bugs that affect user behavior
+- ✅ Add or change dependencies
+- ✅ Modify installation process
+
+**Update order:**
+1. **FIRST**: Update `CHANGELOG.md` (document what changed)
+2. **THEN**: Update `GUIDE.md` (explain how to use it)
+3. **FINALLY**: Update `README.md` if needed (quick start only)
+
+### Documentation Update Checklist
+
+After implementing changes, verify:
+
+```markdown
+## CHANGELOG.md Updates
+- [ ] Added entry to [Unreleased] section
+- [ ] Used correct category (Added/Changed/Fixed/etc.)
+- [ ] Included clear description of user-facing changes
+- [ ] Added technical details if relevant
+- [ ] Mentioned new CLI commands/options
+
+## GUIDE.md Updates
+- [ ] Updated relevant sections (Installation/Usage/Configuration/etc.)
+- [ ] Added examples for new features
+- [ ] Updated command references
+- [ ] Updated configuration examples
+- [ ] Updated troubleshooting if needed
+- [ ] Updated file structure diagrams if changed
+
+## README.md Updates (if needed)
+- [ ] Updated features list if major feature added
+- [ ] Updated quick start if workflow changed
+- [ ] Updated usage examples if commands changed
+- [ ] Verified all links work
+```
+
+### Documentation Style Guide
+
+**Commands and code:**
+```markdown
+# Use code blocks for commands
+\`\`\`bash
+vfscore translate --force
+\`\`\`
+
+# Inline code for files, commands, parameters
+Run `vfscore translate` with `--force` option.
+```
+
+**Configuration examples:**
+```markdown
+# Always show full YAML context
+\`\`\`yaml
+translation:
+  enabled: true
+  model: gemini-2.5-flash
+  cache_translations: true
+\`\`\`
+```
+
+**File paths:**
+```markdown
+# Use relative paths from project root
+outputs/llm_calls/<model>/<item_id>/rep_1_it.json
+```
+
+**Sections:**
+- Use clear hierarchical headings (##, ###, ####)
+- Start with overview, then details
+- Include "Why this matters" for complex concepts
+
+### Example: After Adding Translation Feature
+
+**Step 1 - Update CHANGELOG.md:**
+```markdown
+## [Unreleased]
+
+### Added - Bilingual Translation System
+- `vfscore translate` command for translating results to Italian
+- Interactive language switcher in HTML reports
+- Automatic caching of translations
+```
+
+**Step 2 - Update GUIDE.md:**
+- Add "Bilingual Reports" section with usage examples
+- Update pipeline steps (now 8 instead of 7)
+- Add configuration reference for `translation:` section
+- Add troubleshooting entry for translation issues
+
+**Step 3 - Update README.md:**
+- Add "Bilingual Reports" to features list
+- Add `vfscore translate` to usage examples
+- Add translation section to quick overview
+
+### Validation
+
+Before considering documentation complete:
+
+1. **Test commands**: Copy-paste commands from docs and verify they work
+2. **Test config**: Verify config examples are valid YAML
+3. **Test links**: Ensure all internal links work
+4. **Read user perspective**: Would a new user understand this?
 
 ## Important Implementation Details
 
