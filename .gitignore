@@ -115,3 +115,13 @@ site/
 
 # CI/CD
 .github/workflows/*.local.yml
+
+# AI Agents
+CLAUDE.md
+gemini.md
+
+# Data
+assets/
+datasets/
+metadata/
+outputs/
