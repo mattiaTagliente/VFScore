@@ -456,6 +456,96 @@ Before considering documentation complete:
 3. **Test links**: Ensure all internal links work
 4. **Read user perspective**: Would a new user understand this?
 
+### 7. Validation Study Framework (NEW)
+
+**Critical**: VFScore now includes comprehensive validation study support for reliability assessment:
+
+#### Parameter Sweep Support
+- **CLI Parameters**: `vfscore score --temperature 0.5 --top-p 0.95`
+- **Run ID Tracking**: Each evaluation gets unique UUID for statistical independence
+- **Metadata Logging**: All results include temperature, top_p, run_id, timestamp, model_name
+
+#### Enhanced Result Format
+```json
+{
+  "item_id": "558736",
+  "score": 0.850,
+  "subscores": {...},
+  "rationale": [...],
+  "metadata": {
+    "temperature": 0.5,
+    "top_p": 0.95,
+    "run_id": "a7f3c4e2-9d1b-4a8f-b6e5-3c2f1a8d9e7b",
+    "timestamp": "2025-10-23T14:23:45.123456",
+    "model_name": "gemini-2.5-pro"
+  }
+}
+```
+
+#### Key Components
+- **`BaseLLMClient.__init__()`**: Now accepts `run_id` parameter (auto-generates if not provided)
+- **`GeminiClient.score_visual_fidelity()`**: Adds metadata dict to all results
+- **`scoring.py:score_item_with_repeats()`**: Generates unique run_id per repeat
+- **`scoring.py:get_llm_client()`**: Accepts temperature, top_p, run_id parameters
+- **Prompts**: Include run_id nonce to prevent LLM caching
+
+#### Validation Report Generator
+- **File**: `validation_report_generator_enhanced.py`
+- **Features**:
+  - Full English/Italian bilingual support
+  - Interactive help menu with concept explanations (ICC, MAD, Correlation, Temperature, Top-P, etc.)
+  - Language toggle with localStorage persistence
+  - Professional UI with Chart.js and Plotly visualizations
+  - Download options (JSON/CSV)
+
+#### Validation Study Workflow
+```python
+# Example: Parameter sweep
+parameter_grid = [
+    {"temp": 0.0, "top_p": 1.0},  # Baseline (deterministic)
+    {"temp": 0.2, "top_p": 1.0},  # Low temperature
+    {"temp": 0.5, "top_p": 0.95}, # Medium temperature
+    {"temp": 0.8, "top_p": 0.9},  # High temperature
+]
+
+for params in parameter_grid:
+    cmd = [
+        "vfscore", "score",
+        "--model", "gemini-2.5-pro",
+        "--repeats", "5",
+        "--temperature", str(params["temp"]),
+        "--top-p", str(params["top_p"])
+    ]
+    subprocess.run(cmd)
+```
+
+#### Usage from CLI
+```bash
+# Run with custom parameters
+vfscore score --repeats 5 --temperature 0.5 --top-p 0.95
+
+# Run with defaults from config
+vfscore score --repeats 5
+
+# Each repeat gets unique run_id for independence
+```
+
+#### Implementation Files
+- `src/vfscore/llm/base.py` - Added run_id support
+- `src/vfscore/llm/gemini.py` - Added metadata logging
+- `src/vfscore/scoring.py` - Parameter sweep support
+- `src/vfscore/__main__.py` - CLI temperature/top_p options
+- `validation_study.py` - Validation study orchestrator
+- `validation_report_generator_enhanced.py` - Enhanced bilingual report
+- `PHASE1_IMPLEMENTATION_COMPLETE.md` - Full documentation
+- `test_phase1.py` - Verification tests
+
+#### Why This Matters
+- Enables systematic validation studies (ICC, MAD, correlation analysis)
+- Ensures statistical independence across repeated evaluations
+- Supports reproducibility with complete metadata tracking
+- Ready for stakeholder presentations with bilingual reports
+
 ## Important Implementation Details
 
 ### Blender Integration

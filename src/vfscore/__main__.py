@@ -171,26 +171,34 @@ def package(
 def score(
     model: str = typer.Option("gemini-2.5-pro", help="LLM model: gemini-2.5-pro, gemini-2.5-flash"),
     repeats: int = typer.Option(3, help="Number of repeats per item"),
+    temperature: float = typer.Option(None, help="Sampling temperature (overrides config if provided)"),
+    top_p: float = typer.Option(None, help="Top-p sampling parameter (overrides config if provided)"),
     config_path: Path = typer.Option("config.yaml", help="Path to config file"),
 ) -> None:
     """
     Score visual fidelity using LLM vision models.
-    
+
     Uses Gemini 2.5 Pro by default for complex visual reasoning.
-    
+
     Reads:
     - outputs/labels/<item_id>/packet.json
-    
+
     Creates:
     - outputs/llm_calls/<model>/<item_id>/rep_{1,2,3}.json
     """
     from vfscore.scoring import run_scoring
-    
+
     console.print(Panel.fit(f"[bold cyan]Step 5: LLM Scoring ({model})[/bold cyan]"))
     config = get_config()
-    
+
     try:
-        run_scoring(config, model=model, repeats=repeats)
+        run_scoring(
+            config,
+            model=model,
+            repeats=repeats,
+            temperature=temperature,
+            top_p=top_p
+        )
         console.print(f"[green]✓[/green] Scoring complete using {model}")
     except Exception as e:
         console.print(f"[red]✗[/red] Scoring failed: {e}")

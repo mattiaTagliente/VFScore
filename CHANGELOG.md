@@ -7,6 +7,86 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Validation Study Framework ✅
+
+#### Parameter Sweep Support
+- **CLI Parameters**: Added `--temperature` and `--top-p` options to `vfscore score` command
+- **Run ID Tracking**: Each evaluation gets unique `run_id` (UUID) for statistical independence
+- **Metadata Logging**: All results include complete provenance (temperature, top_p, run_id, timestamp, model_name)
+- **Configurable Sampling**: Override temperature and top_p from command line for validation studies
+
+**Usage**:
+```bash
+# Custom temperature and top_p for validation study
+vfscore score --model gemini-2.5-pro --repeats 5 --temperature 0.5 --top-p 0.95
+
+# Use defaults from config
+vfscore score --model gemini-2.5-pro --repeats 5
+```
+
+#### Enhanced Bilingual Validation Report
+- **Full Bilingual Support**: Complete English/Italian validation reports
+- **Interactive Help Menu**: Floating help button with comprehensive concept explanations
+  - ICC (Intra-Class Correlation) - Reliability measurement
+  - MAD (Median Absolute Deviation) - Stability measurement
+  - Correlation (Pearson & Spearman) - Human agreement
+  - MAE & RMSE - Error quantification
+  - Temperature & Top-P - Sampling parameters explained
+  - CI (Confidence Interval) - Uncertainty quantification
+- **Language Toggle**: One-click switching between English and Italian
+- **Persistent Preference**: Language choice saved in browser localStorage
+- **Professional UI**: Modern gradient design with interactive charts (Chart.js, Plotly)
+
+**Files Created**:
+- `validation_report_generator_enhanced.py` - Enhanced bilingual report generator
+- `validation_study.py` - Validation study orchestrator
+- `PHASE1_IMPLEMENTATION_COMPLETE.md` - Implementation documentation
+- `test_phase1.py` - Verification tests
+
+#### Technical Changes
+- `BaseLLMClient.__init__()`: Now accepts `run_id` parameter (auto-generates UUID if not provided)
+- `GeminiClient.score_visual_fidelity()`: Adds `metadata` dict to all result JSONs
+- `scoring.py`: Updated to generate unique run_id per repeat and pass parameters
+- Prompts now include run_id nonce to prevent LLM caching and ensure independence
+
+**Result JSON Format** (Enhanced):
+```json
+{
+  "item_id": "558736",
+  "score": 0.850,
+  "subscores": {...},
+  "rationale": [...],
+  "metadata": {
+    "temperature": 0.5,
+    "top_p": 0.95,
+    "run_id": "a7f3c4e2-9d1b-4a8f-b6e5-3c2f1a8d9e7b",
+    "timestamp": "2025-10-23T14:23:45.123456",
+    "model_name": "gemini-2.5-pro"
+  }
+}
+```
+
+**Why This Matters**:
+- Enables systematic validation studies with parameter sweeps
+- Ensures statistical independence across repeated evaluations
+- Provides complete provenance tracking for all results
+- Supports reliability analysis (ICC, MAD) and human agreement metrics
+- Ready for Archiproduct presentation with bilingual reports
+
+### Changed - Score Range Normalization
+
+#### Breaking Change: Score Output Range
+- **Scores now output in 0.000-1.000 range** (previously 0-100)
+- LLM still scores internally on 0-100 scale for familiarity
+- Automatic conversion to normalized range after scoring
+- **Affected components**:
+  - LLM client (`gemini.py`): Divides scores by 100 after parsing
+  - Report display: Updated thresholds (0.8/0.6/0.4 instead of 80/60/40)
+  - Subscore visualization: Updated to format as 0.000-1.000 with percentage bars
+  - Summary statistics: Display format changed to 3 decimal places
+
+**Migration Note**: If you have existing results in 0-100 range, they will continue to work but display differently. Re-run scoring for normalized output.
+
 ### Added - Bilingual Translation System 🌍
 
 #### Translation Features

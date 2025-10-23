@@ -13,6 +13,7 @@ import getpass
 import hashlib
 import json
 import socket
+import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
@@ -71,11 +72,10 @@ def create_batch_metadata(
     except Exception:
         username = "unknown"
 
-    # Create config hash for tracking configuration changes
+    # Note: temperature and top_p will be added when calling create_batch_metadata
+    # in run_scoring function to use actual values (not just config defaults)
     config_str = json.dumps({
         "rubric_weights": config.scoring.rubric_weights,
-        "temperature": config.scoring.temperature,
-        "top_p": config.scoring.top_p,
     }, sort_keys=True)
     config_hash = hashlib.sha256(config_str.encode()).hexdigest()[:8]
 
@@ -87,8 +87,6 @@ def create_batch_metadata(
         "repeats": repeats,
         "config_hash": config_hash,
         "rubric_weights": config.scoring.rubric_weights,
-        "temperature": config.scoring.temperature,
-        "top_p": config.scoring.top_p,
     }
 
 
@@ -104,11 +102,18 @@ def load_packets(labels_dir: Path) -> List[Dict]:
     return packets
 
 
-def get_llm_client(model_name: str, config: Config):
-    """Get LLM client instance."""
+def get_llm_client(model_name: str, temperature: float, top_p: float, run_id: str = None):
+    """Get LLM client instance.
+
+    Args:
+        model_name: Model name to use
+        temperature: Sampling temperature
+        top_p: Top-p sampling parameter
+        run_id: Unique run identifier (optional, will be auto-generated if None)
+    """
     # Normalize model name
     model_lower = model_name.lower()
-    
+
     if "gemini" in model_lower:
         # Map common names to actual model IDs
         if "2.5-pro" in model_lower or model_lower == "gemini":
@@ -117,11 +122,12 @@ def get_llm_client(model_name: str, config: Config):
             actual_model = "gemini-2.5-flash"
         else:
             actual_model = model_name
-        
+
         return GeminiClient(
             model_name=actual_model,
-            temperature=config.scoring.temperature,
-            top_p=config.scoring.top_p,
+            temperature=temperature,
+            top_p=top_p,
+            run_id=run_id,
         )
     else:
         raise ValueError(f"Unsupported model: {model_name}")
@@ -129,19 +135,24 @@ def get_llm_client(model_name: str, config: Config):
 
 def score_item_with_repeats(
     packet: Dict,
-    client,
+    model_name: str,
+    temperature: float,
+    top_p: float,
     rubric_weights: Dict[str, float],
     repeats: int,
     output_dir: Path,
 ) -> List[Dict]:
-    """Score a single item with multiple repeats."""
-    
+    """Score a single item with multiple repeats.
+
+    Each repeat gets a unique run_id for statistical independence.
+    """
+
     item_id = packet["item_id"]
-    
+
     # Collect image paths (GT images first, then candidate)
     image_paths = [Path(p) for p in packet["gt_labeled_paths"]]
     image_paths.append(Path(packet["cand_labeled_path"]))
-    
+
     # Context for the LLM
     context = {
         "item_id": item_id,
@@ -152,29 +163,40 @@ def score_item_with_repeats(
         "gt_labels": packet["gt_labels"],
         "candidate_label": packet["candidate_label"],
     }
-    
+
     # Run repeats
     results = []
-    
+
     for rep_idx in range(1, repeats + 1):
         try:
+            # Generate unique run_id for each repeat
+            run_id = str(uuid.uuid4())
+
+            # Create new client for each repeat with unique run_id
+            client = get_llm_client(
+                model_name=model_name,
+                temperature=temperature,
+                top_p=top_p,
+                run_id=run_id
+            )
+
             result = client.score_visual_fidelity(
                 image_paths=image_paths,
                 context=context,
                 rubric_weights=rubric_weights,
             )
-            
+
             # Save result
             output_path = output_dir / f"rep_{rep_idx}.json"
             with open(output_path, "w", encoding="utf-8") as f:
                 json.dump(result, f, indent=2, ensure_ascii=False)
-            
+
             results.append(result)
-            
+
         except Exception as e:
             console.print(f"[red]Error scoring {item_id} (repeat {rep_idx}): {e}[/red]")
             # Continue with other repeats
-    
+
     return results
 
 
@@ -182,8 +204,18 @@ def run_scoring(
     config: Config,
     model: str = "gemini-2.5-pro",
     repeats: int = 3,
+    temperature: float = None,
+    top_p: float = None,
 ) -> None:
-    """Run LLM scoring for all items."""
+    """Run LLM scoring for all items.
+
+    Args:
+        config: Configuration object
+        model: Model name to use
+        repeats: Number of repeats per item
+        temperature: Sampling temperature (overrides config if provided)
+        top_p: Top-p sampling (overrides config if provided)
+    """
 
     # Load packets
     labels_dir = config.paths.out_dir / "labels"
@@ -195,11 +227,12 @@ def run_scoring(
     if not packets:
         raise ValueError("No scoring packets found. Run 'vfscore package' first.")
 
-    console.print(f"\n[bold]Scoring {len(packets)} items with {model} ({repeats} repeats each)...[/bold]")
+    # Use provided parameters or fall back to config
+    actual_temperature = temperature if temperature is not None else config.scoring.temperature
+    actual_top_p = top_p if top_p is not None else config.scoring.top_p
 
-    # Initialize LLM client
-    client = get_llm_client(model, config)
-    console.print(f"[cyan]Using model: {client.model_name}[/cyan]")
+    console.print(f"\n[bold]Scoring {len(packets)} items with {model} ({repeats} repeats each)...[/bold]")
+    console.print(f"[cyan]Temperature: {actual_temperature}, Top-P: {actual_top_p}[/cyan]")
 
     # Determine base results directory
     if config.scoring.results_dir:
@@ -215,6 +248,9 @@ def run_scoring(
     if config.scoring.use_batch_mode:
         batch_dir_name = create_batch_directory_name()
         batch_metadata = create_batch_metadata(model, repeats, config)
+        # Add actual temperature and top_p values
+        batch_metadata["temperature"] = actual_temperature
+        batch_metadata["top_p"] = actual_top_p
         console.print(f"[cyan]Batch mode enabled: {batch_dir_name}[/cyan]")
 
     # Normalize model name for directory
@@ -247,7 +283,9 @@ def run_scoring(
         try:
             results = score_item_with_repeats(
                 packet=packet,
-                client=client,
+                model_name=model,
+                temperature=actual_temperature,
+                top_p=actual_top_p,
                 rubric_weights=config.scoring.rubric_weights,
                 repeats=repeats,
                 output_dir=output_dir,

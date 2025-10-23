@@ -241,7 +241,21 @@ item_id,l1,l2,l3
 - Sends images to LLM (default: Gemini 2.5 Pro)
 - Evaluates visual fidelity across 4 dimensions
 - Runs multiple repeats (default: 3) for reliability
+- Each repeat gets unique `run_id` for statistical independence
+- Supports custom `temperature` and `top_p` parameters for validation studies
 - Outputs to `outputs/llm_calls/<model>/<item_id>/batch_*/`
+
+**Advanced Scoring Options**:
+```bash
+# Validation study with custom sampling parameters
+vfscore score --repeats 5 --temperature 0.5 --top-p 0.95
+
+# More deterministic scoring
+vfscore score --temperature 0.0 --top-p 1.0
+
+# Use config defaults
+vfscore score
+```
 
 #### 6. Aggregate (`vfscore aggregate`)
 - Computes median scores across repeats
@@ -272,7 +286,7 @@ Visual fidelity is evaluated across 4 weighted dimensions:
 | **Texture Identity** | 15% | Correct patterns, logos, prints |
 | **Texture Scale & Placement** | 20% | Scale, alignment, seams |
 
-**Final Score** = Weighted sum [0-100]
+**Final Score** = Weighted sum [0.000-1.000]
 
 **Note**: Geometry/silhouette is explicitly **excluded** - VFScore evaluates appearance only.
 
@@ -435,6 +449,79 @@ Your preference is saved automatically.
 
 ---
 
+## Validation Studies
+
+### Overview
+
+VFScore includes a comprehensive framework for validation studies to assess:
+- **Reliability**: Consistency of evaluations (ICC, MAD)
+- **Stability**: Score dispersion across repeated measurements
+- **Human Agreement**: Correlation with human evaluators
+
+### Parameter Sweep Support
+
+The system supports systematic parameter sweeps for validation studies:
+
+```bash
+# Example: Test different temperature settings
+vfscore score --repeats 5 --temperature 0.0 --top-p 1.0  # Baseline
+vfscore score --repeats 5 --temperature 0.2 --top-p 1.0  # Test 1
+vfscore score --repeats 5 --temperature 0.5 --top-p 0.95 # Test 2
+vfscore score --repeats 5 --temperature 0.8 --top-p 0.9  # Test 3
+```
+
+### Key Features
+
+#### Run ID Tracking
+- Each evaluation gets a unique `run_id` (UUID)
+- Run ID included in prompt to prevent LLM caching
+- Ensures statistical independence across repeated evaluations
+
+#### Complete Metadata
+All result JSON files include:
+```json
+{
+  "item_id": "558736",
+  "score": 0.850,
+  "metadata": {
+    "temperature": 0.5,
+    "top_p": 0.95,
+    "run_id": "unique-uuid",
+    "timestamp": "2025-10-23T14:23:45",
+    "model_name": "gemini-2.5-pro"
+  }
+}
+```
+
+### Validation Study Workflow
+
+1. **Select Test Objects**: Choose diverse items across categories
+2. **Run Parameter Sweep**: Test different temperature/top_p combinations
+3. **Collect Results**: All batches automatically accumulated
+4. **Analyze Metrics**: Compute ICC, MAD, correlations
+5. **Generate Report**: Create bilingual validation report with help menu
+
+### Enhanced Validation Reports
+
+The validation study framework includes enhanced bilingual reports with:
+
+- **Interactive Help Menu**: Floating `?` button with concept explanations
+  - ICC (Intra-Class Correlation)
+  - MAD (Median Absolute Deviation)
+  - Correlation (Pearson & Spearman)
+  - MAE & RMSE
+  - Temperature & Top-P parameters
+  - Confidence Intervals
+- **Language Toggle**: English/Italian switching
+- **Interactive Charts**: Chart.js and Plotly visualizations
+- **Download Options**: Export JSON and CSV data
+
+### Example Validation Study
+
+See `PHASE1_IMPLEMENTATION_COMPLETE.md` for complete implementation details and `validation_study.py` for the orchestration framework.
+
+---
+
 ## Configuration
 
 ### Two-Layer System
@@ -498,11 +585,18 @@ scoring:
     material_finish: 25
     texture_identity: 15
     texture_scale_placement: 20
-  temperature: 0.0
-  top_p: 1.0
+  temperature: 0.0           # Default sampling temperature (0.0 = deterministic)
+  top_p: 1.0                 # Default top-p sampling (1.0 = all tokens)
   use_batch_mode: true       # Enable timestamped batches
   results_dir: null          # null = local, or path to shared directory
 ```
+
+**Note**: `temperature` and `top_p` can be overridden from CLI:
+```bash
+vfscore score --temperature 0.5 --top-p 0.95
+```
+
+This enables **validation studies** to sweep across different parameter settings while maintaining independent evaluations (each repeat gets unique `run_id`).
 
 #### Translation
 

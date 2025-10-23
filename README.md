@@ -12,7 +12,7 @@ Automated pipeline for evaluating the **visual fidelity** of generated 3D object
 VFScore provides an end-to-end system to:
 - 📸 Process reference product photos (background removal, standardization)
 - 🎨 Render generated 3D objects (.glb) with controlled lighting and camera
-- 🤖 Score visual appearance fidelity (0-100) using LLM vision models
+- 🤖 Score visual appearance fidelity (0.000-1.000) using LLM vision models
 - 📊 Generate bilingual reports (English/Italian) with confidence metrics
 
 **Key Feature**: Evaluates **appearance only** (color, materials, textures) - geometry quality is assessed separately.
@@ -23,6 +23,7 @@ VFScore provides an end-to-end system to:
 
 - ⚡ **Automated Pipeline**: 8-step workflow from raw data to final report
 - 🌍 **Bilingual Reports**: Interactive English/Italian reports with one-click language switching
+- 🔬 **Validation Studies**: Parameter sweep support with complete metadata tracking
 - 🔄 **Batch System**: Multi-user collaboration without overwriting results
 - 🎯 **Confidence Metrics**: Statistical validation with MAD-based confidence scores
 - 🔧 **Configurable**: Flexible YAML configuration with machine-specific overrides
@@ -125,6 +126,9 @@ vfscore score --model gemini-2.5-flash
 # More repeats for higher confidence
 vfscore score --repeats 5
 
+# Parameter sweep for validation studies
+vfscore score --repeats 5 --temperature 0.5 --top-p 0.95
+
 # Aggregate only latest batch
 vfscore aggregate --latest-only
 
@@ -132,6 +136,19 @@ vfscore aggregate --latest-only
 vfscore aggregate --batch-pattern "user_mattia"
 vfscore aggregate --after 2025-01-01
 ```
+
+### Validation Studies
+
+```bash
+# Run parameter sweep for validation study
+vfscore score --repeats 5 --temperature 0.0 --top-p 1.0  # Baseline
+vfscore score --repeats 5 --temperature 0.5 --top-p 0.95 # Test setting
+
+# Each evaluation gets unique run_id for statistical independence
+# Complete metadata (temperature, top_p, run_id, timestamp) logged
+```
+
+See **[Validation Studies Guide](GUIDE.md#validation-studies)** for details.
 
 ---
 
@@ -146,7 +163,7 @@ Visual fidelity is evaluated across 4 weighted dimensions:
 | **Texture Identity** | 15% | Correct patterns, logos, prints |
 | **Texture Scale & Placement** | 20% | Scale, alignment, seams |
 
-**Final Score** = Weighted sum [0-100]
+**Final Score** = Weighted sum [0.000-1.000]
 
 **Note**: Geometry/silhouette is explicitly **excluded**.
 

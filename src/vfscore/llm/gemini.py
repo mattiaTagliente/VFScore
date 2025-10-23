@@ -14,6 +14,7 @@ import time
 import re
 import random
 import threading
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -36,6 +37,7 @@ class GeminiClient(BaseLLMClient):
         model_name: str = "gemini-2.5-pro",
         temperature: float = 0.0,
         top_p: float = 1.0,
+        run_id: str = None,
         api_key: str | None = None,
         min_interval_sec: float | None = None,  # NEW: throttle override
     ):
@@ -44,10 +46,11 @@ class GeminiClient(BaseLLMClient):
             model_name: Gemini model name (default: gemini-2.5-pro for complex reasoning)
             temperature: Sampling temperature
             top_p: Top-p sampling
+            run_id: Unique identifier for this run (for statistical independence)
             api_key: API key (if None, reads from GEMINI_API_KEY env var)
             min_interval_sec: minimo intervallo tra chiamate consecutive (default 31s per free tier)
         """
-        super().__init__(model_name, temperature, top_p)
+        super().__init__(model_name, temperature, top_p, run_id)
 
         # Get API key
         if api_key is None:
@@ -193,6 +196,20 @@ class GeminiClient(BaseLLMClient):
             required_keys = ["item_id", "subscores", "score", "rationale"]
             if not all(key in result for key in required_keys):
                 raise ValueError(f"Missing required keys in response: {required_keys}")
+
+            # Convert scores from 0-100 to 0.0-1.0 range
+            result["score"] = result["score"] / 100.0
+            for key in result["subscores"]:
+                result["subscores"][key] = result["subscores"][key] / 100.0
+
+            # Add metadata for validation study
+            result["metadata"] = {
+                "temperature": self.temperature,
+                "top_p": self.top_p,
+                "run_id": self.run_id,
+                "timestamp": datetime.now().isoformat(),
+                "model_name": self.model_name
+            }
 
             return result
 

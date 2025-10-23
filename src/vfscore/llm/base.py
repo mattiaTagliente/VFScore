@@ -1,5 +1,6 @@
 """Base LLM client interface."""
 
+import uuid
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Dict, List
@@ -7,18 +8,20 @@ from typing import Any, Dict, List
 
 class BaseLLMClient(ABC):
     """Abstract base class for LLM vision clients."""
-    
-    def __init__(self, model_name: str, temperature: float = 0.0, top_p: float = 1.0):
+
+    def __init__(self, model_name: str, temperature: float = 0.0, top_p: float = 1.0, run_id: str = None):
         """Initialize LLM client.
-        
+
         Args:
             model_name: Name of the model to use
             temperature: Sampling temperature
             top_p: Top-p sampling parameter
+            run_id: Unique identifier for this run (for statistical independence)
         """
         self.model_name = model_name
         self.temperature = temperature
         self.top_p = top_p
+        self.run_id = run_id or str(uuid.uuid4())
     
     @abstractmethod
     def score_visual_fidelity(
@@ -37,8 +40,8 @@ class BaseLLMClient(ABC):
         Returns:
             Dict with:
                 - item_id: str
-                - subscores: dict of dimension -> score [0-100]
-                - score: int (weighted sum)
+                - subscores: dict of dimension -> score [0.0-1.0]
+                - score: float (weighted sum in range 0.0-1.0)
                 - rationale: list of explanation strings
         """
         pass
@@ -55,15 +58,16 @@ class BaseLLMClient(ABC):
         rubric_weights: Dict[str, float],
     ) -> str:
         """Build user message with instructions."""
-        
+
         gt_labels_str = ", ".join([f'"{label}"' for label in context["gt_labels"]])
-        
+
         message = f"""Context:
 - item_id: {context["item_id"]}
 - categories: {{ "l1": "{context["l1"]}", "l2": "{context["l2"]}", "l3": "{context["l3"]}" }}
 - gt_count: {context["gt_count"]}
 - candidate_label: "CANDIDATE"
 - gt_labels: [{gt_labels_str}]
+- run_id: {self.run_id}
 
 Rubric (weights in percent):
 - color_palette: {rubric_weights["color_palette"]}

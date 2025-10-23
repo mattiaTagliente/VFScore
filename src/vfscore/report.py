@@ -40,12 +40,16 @@ def get_confidence_color(confidence: float) -> str:
 
 
 def get_score_color(score: float) -> str:
-    """Get color for score badge."""
-    if score >= 80:
+    """Get color for score badge.
+
+    Args:
+        score: Score in range [0.0, 1.0]
+    """
+    if score >= 0.8:
         return "success"
-    elif score >= 60:
+    elif score >= 0.6:
         return "primary"
-    elif score >= 40:
+    elif score >= 0.4:
         return "warning"
     else:
         return "danger"
@@ -190,11 +194,11 @@ HTML_TEMPLATE = """
                     <p class="text-muted" data-lang-en="Total Items" data-lang-it="Elementi Totali"></p>
                 </div>
                 <div class="col-md-3">
-                    <h3 class="text-success">{{ "%.1f"|format(summary.mean_score) }}</h3>
+                    <h3 class="text-success">{{ "%.3f"|format(summary.mean_score) }}</h3>
                     <p class="text-muted" data-lang-en="Mean Score" data-lang-it="Punteggio Medio"></p>
                 </div>
                 <div class="col-md-3">
-                    <h3 class="text-info">{{ "%.1f"|format(summary.median_score) }}</h3>
+                    <h3 class="text-info">{{ "%.3f"|format(summary.median_score) }}</h3>
                     <p class="text-muted" data-lang-en="Median Score" data-lang-it="Punteggio Mediano"></p>
                 </div>
                 <div class="col-md-3">
@@ -232,7 +236,7 @@ HTML_TEMPLATE = """
                 <div class="col-md-4">
                     <!-- Score -->
                     <div class="score-circle bg-{{ item.score_color }}">
-                        {{ item.final_score }}
+                        {{ "%.3f"|format(item.final_score) }}
                     </div>
                     <p class="text-center mt-2">
                         <span class="badge bg-{{ item.conf_color }}">
@@ -245,7 +249,7 @@ HTML_TEMPLATE = """
                     <h6 class="mt-3" data-lang-en="Model Scores" data-lang-it="Punteggi del Modello"></h6>
                     <ul class="list-unstyled">
                         {% for model, score in item.model_scores.items() %}
-                        <li><strong>{{ model }}:</strong> {{ score }}</li>
+                        <li><strong>{{ model }}:</strong> {{ "%.3f"|format(score) }}</li>
                         {% endfor %}
                     </ul>
                     {% endif %}
@@ -254,9 +258,9 @@ HTML_TEMPLATE = """
                     <h6 class="mt-3" data-lang-en="Subscores" data-lang-it="Punteggi Parziali"></h6>
                     {% for dim, score in item.subscores.items() %}
                     <div>
-                        <small>{{ dim.replace('_', ' ').title() }}: {{ score }}</small>
+                        <small>{{ dim.replace('_', ' ').title() }}: {{ "%.3f"|format(score) }}</small>
                         <div class="subscore-bar">
-                            <div class="subscore-fill" style="width: {{ score }}%"></div>
+                            <div class="subscore-fill" style="width: {{ (score * 100) }}%"></div>
                         </div>
                     </div>
                     {% endfor %}
