@@ -169,6 +169,48 @@ class ValidationStudy:
         print("\n[INFO] Starting validation study...")
         print(f"[INFO] Results will be saved to: {self.config.output_dir}")
 
+        # PHASE 0: Run pipeline to prepare packets (only once!)
+        print(f"\n{'=' * 80}")
+        print("PHASE 0: PIPELINE PREPARATION")
+        print(f"{'=' * 80}")
+        print("[INFO] Running pipeline to create scoring packets...")
+        print("[INFO] This only needs to be done once for all parameter settings")
+
+        try:
+            # Run ingest
+            print("\n[1/4] Running ingest...")
+            result = subprocess.run(["vfscore", "ingest"], capture_output=True, text=True)
+            if result.returncode != 0:
+                print(f"[ERROR] Ingest failed: {result.stderr[:200]}")
+                return costs
+
+            # Run preprocess-gt
+            print("[2/4] Running preprocess-gt...")
+            result = subprocess.run(["vfscore", "preprocess-gt"], capture_output=True, text=True)
+            if result.returncode != 0:
+                print(f"[ERROR] Preprocess failed: {result.stderr[:200]}")
+                return costs
+
+            # Run render-cand
+            print("[3/4] Running render-cand...")
+            result = subprocess.run(["vfscore", "render-cand"], capture_output=True, text=True)
+            if result.returncode != 0:
+                print(f"[ERROR] Render failed: {result.stderr[:200]}")
+                return costs
+
+            # Run package
+            print("[4/4] Running package...")
+            result = subprocess.run(["vfscore", "package"], capture_output=True, text=True)
+            if result.returncode != 0:
+                print(f"[ERROR] Package failed: {result.stderr[:200]}")
+                return costs
+
+            print("[OK] Pipeline preparation complete - packets created")
+
+        except Exception as e:
+            print(f"[ERROR] Exception during pipeline preparation: {e}")
+            return costs
+
         # Load objects
         objects = self._load_objects()
 

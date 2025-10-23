@@ -1,0 +1,25 @@
+{
+  "title": "VFScore Variant Identification - Comprehensive Analysis",
+  "summary": {
+    "core_issue": "item_id (product_id) assumed unique, but data uses (product_id, variant) as key",
+    "severity": "CRITICAL",
+    "products_affected": 4,
+    "modules_affected": 7,
+    "data_loss": "Permanent loss of variants at ingestion, silent with warning only"
+  },
+  "affected_modules": {
+    "ingest.py": "Lines 40-121: Drops variants silently, creates incomplete manifest",
+    "preprocess_gt.py": "Lines 56-62: Directory collapse, variants overwrite",
+    "render_cycles.py": "Lines 184-190: Rendered images overwrite for variants",
+    "packetize.py": "Lines 32-88: Packets missing variant field",
+    "scoring.py": "Lines 131-225: Scoring directory collision",
+    "aggregate.py": "Lines 163-286: Results merged across variants",
+    "report.py": "Lines 355-360: Report incomplete for multi-variant"
+  },
+  "products_with_variants": {
+    "188368": "2 variants (both different algos)",
+    "335888": "1 named variant (curved-backrest)",
+    "369578": "2 variants (mixed)",
+    "558736": "2 variants (both different algos)"
+  }
+}
