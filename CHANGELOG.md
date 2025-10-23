@@ -7,6 +7,112 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - Database Abstraction Layer 🗄️
+
+#### Core Data Source System
+- **Database-Driven Architecture**: Complete refactoring from filesystem scanning to database-driven ingestion
+- **Dual-Source Support**: Unified interface for both legacy (database.csv) and archi3D (tables/generations.csv) data sources
+- **ItemRecord Data Model**: Comprehensive data model supporting (product_id, variant) as unique item identifier
+- **Multiple Generations**: Each generation (algorithm + job_id) is now a separate manifest entry
+- **Full Provenance**: Complete tracking of algorithm, job_id, variant, source_type in manifest
+
+#### New Modules Created
+- `src/vfscore/data_sources/base.py` - Core abstractions (ItemRecord dataclass, DataSource protocol)
+- `src/vfscore/data_sources/legacy_source.py` - Legacy database.csv support with base_path resolution
+- `src/vfscore/data_sources/archi3d_source.py` - Archi3D workspace integration
+- `src/vfscore/data_sources/__init__.py` - Public exports
+
+**ItemRecord Structure**:
+```python
+@dataclass
+class ItemRecord:
+    product_id: str          # e.g., "335888"
+    variant: str             # e.g., "Curved backrest" or ""
+    item_id: str             # Composite: "{product_id}_{variant}"
+    ref_image_paths: List[Path]
+    glb_path: Path
+    algorithm: str           # e.g., "tripo3d_v2p5_multi"
+    job_id: str              # Unique generation identifier
+    # Metadata fields...
+    source_type: str         # "legacy" or "archi3d"
+```
+
+#### Base Path Configuration
+- **Single Base Path**: All legacy data paths resolved from one base directory
+- **Relative GLB Paths**: GLB files resolved from `output_glb_relpath` in database.csv
+- **Relative Dataset Folder**: Reference images folder relative to base_path
+- **No Manual Copying**: Direct access to original file locations
+
+**Configuration** (`config.yaml`):
+```yaml
+data_source:
+  type: legacy  # "legacy" or "archi3d"
+
+  # Legacy source (validation study)
+  base_path: null  # Set in config.local.yaml
+  dataset_folder: dataset  # Relative to base_path
+  database_csv: database.csv
+  selected_objects_csv: selected_objects_optimized.csv
+
+  # Archi3D source (future integration)
+  # workspace: path/to/Testing
+  # run_id: "2025-08-17_v1"
+```
+
+### Changed - Ingest Module Refactoring
+
+#### Complete Rewrite of Ingestion
+- **Old Approach**: Filesystem scanning of `datasets/refs/` and `datasets/gens/`
+- **New Approach**: Database-driven with configurable data sources
+- **Path Resolution**: All paths now relative to base_path (legacy) or workspace (archi3D)
+- **Enhanced Manifest**: Added product_id, variant, algorithm, job_id, source_type fields
+
+**Before**: 7 manifest entries (limited by manual file copying)
+**After**: 52 manifest entries (100% of selected items)
+
+#### Breaking Changes
+- `datasets/refs/` and `datasets/gens/` folders **no longer required**
+- Configuration now requires `data_source.base_path` for legacy mode
+- Manifest format includes new fields (backward compatible for reading)
+
+#### New Configuration Model
+- Added `DataSourceConfig` class in `src/vfscore/config.py`
+- Path resolution updated to handle base_path
+- Support for both legacy and archi3D configurations
+
+**Enhanced Manifest Format**:
+```json
+{
+  "item_id": "335888_Curved backrest",
+  "product_id": "335888",
+  "variant": "Curved backrest",
+  "ref_paths": ["..."],
+  "glb_path": "C:/.../Testing/runs/.../model.glb",
+  "algorithm": "tripo3d_v2p5_multi",
+  "job_id": "8a61ab220f6b8b147d0eb1ee30a8042207b12399",
+  "n_refs": 3,
+  "product_name": "LISA WOOD",
+  "manufacturer": "S-CAB",
+  "category_l1": "Arredo",
+  "category_l2": "Tavoli e Sedie",
+  "category_l3": "Sedie",
+  "source_type": "legacy"
+}
+```
+
+#### Data Model Improvements
+- **Correct Item Identity**: Uses (product_id, variant) instead of just product_id
+- **Multiple Generations**: Each (product_id, variant, algorithm, job_id) is a separate record
+- **Complete Metadata**: Full category hierarchy, manufacturer, algorithm tracking
+- **Source Tracking**: Records whether data came from legacy or archi3D source
+
+**Why This Matters**:
+- Enables proper handling of product variants (e.g., "Curved backrest" vs "Straight backrest")
+- Supports multiple generations per item for comparative analysis
+- Ready for archi3D integration (Phase 6 compatible)
+- No more missing data due to incomplete file copying
+- Single Source of Truth philosophy aligned with archi3D
+
 ### Added - Validation Study Framework ✅
 
 #### Parameter Sweep Support

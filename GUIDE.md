@@ -216,9 +216,25 @@ item_id,l1,l2,l3
 ### Understanding the Pipeline
 
 #### 1. Ingest (`vfscore ingest`)
-- Scans `datasets/refs/` and `datasets/gens/`
-- Loads category metadata from `metadata/categories.csv`
+- **Database-Driven**: Reads from configured data source (database.csv or archi3D tables)
+- **Legacy Mode**:
+  - Reads generation records from `database.csv`
+  - Filters by `selected_objects_optimized.csv` (if provided)
+  - Scans reference images from `base_path/dataset/`
+  - Resolves GLB paths from database relative to `base_path`
+- **Archi3D Mode**:
+  - Reads from `workspace/tables/items.csv` and `workspace/tables/generations.csv`
+  - Filters by `run_id` (if specified)
+  - All paths workspace-relative
 - Creates `outputs/manifest.jsonl` with all items
+- **Each manifest entry** includes:
+  - `item_id` (composite: `{product_id}_{variant}`)
+  - `product_id` and `variant` (for proper item identification)
+  - `algorithm` and `job_id` (for generation tracking)
+  - `ref_paths` (list of reference image paths)
+  - `glb_path` (path to generated 3D model)
+  - Full metadata (product_name, manufacturer, categories)
+  - `source_type` ("legacy" or "archi3d")
 
 #### 2. Preprocess GT (`vfscore preprocess-gt`)
 - Removes backgrounds using U²-Net segmentation
@@ -542,13 +558,15 @@ VFScore uses a two-layer configuration to separate shared defaults from machine-
 
 ```yaml
 paths:
-  refs_dir: datasets/refs
-  gens_dir: datasets/gens
-  categories: metadata/categories.csv
+  refs_dir: datasets/refs      # Legacy - no longer used (kept for backward compatibility)
+  gens_dir: datasets/gens      # Legacy - no longer used (kept for backward compatibility)
+  categories: metadata/categories.csv  # Deprecated - metadata now from database
   hdri: assets/lights.hdr
   out_dir: outputs
   blender_exe: "C:/Program Files/Blender Foundation/Blender 4.5/blender.exe"
 ```
+
+**Note**: `refs_dir`, `gens_dir`, and `categories` are legacy fields kept for backward compatibility. The new database-driven ingestion uses `data_source` configuration instead (see Data Source section below).
 
 #### Rendering
 
@@ -606,6 +624,49 @@ translation:
   model: gemini-2.5-flash          # Fast and cost-effective
   cache_translations: true         # Cache to avoid re-translation
 ```
+
+#### Data Source (NEW)
+
+```yaml
+data_source:
+  type: legacy  # "legacy" (database.csv) or "archi3d" (tables/generations.csv)
+
+  # Legacy source (for validation study)
+  base_path: null                        # Set in config.local.yaml
+  dataset_folder: dataset                # Relative to base_path
+  database_csv: database.csv             # Relative to VFScore root
+  selected_objects_csv: selected_objects_optimized.csv
+
+  # Archi3D source (for future integration)
+  # workspace: null                      # Path to archi3D workspace
+  # run_id: null                         # Optional: filter by run_id
+  # items_csv: null                      # Optional: override default
+  # generations_csv: null                # Optional: override default
+```
+
+**Configuration in `config.local.yaml`**:
+```yaml
+data_source:
+  # Base path for all legacy data (Testing folder)
+  # All paths in database.csv are relative to this path
+  base_path: "C:\\Users\\YourName\\Path\\To\\Testing"
+```
+
+**How It Works**:
+- **Legacy Mode**: Reads from `database.csv` and resolves all file paths relative to `base_path`
+  - Reference images: `base_path/dataset/<product_id> - <variant>/images/`
+  - GLB files: `base_path/` + path from `output_glb_relpath` column in database.csv
+  - No need to copy files to `datasets/refs/` or `datasets/gens/` - uses source locations directly
+- **Archi3D Mode**: Reads from archi3D workspace tables (Phase 6 integration)
+  - Uses `workspace/tables/items.csv` and `workspace/tables/generations.csv`
+  - All paths are workspace-relative (archi3D convention)
+
+**Why This Matters**:
+- **Database-Driven**: Single Source of Truth from database.csv
+- **No Manual Copying**: Files read from original locations
+- **Multiple Generations**: Each (product_id, variant, algorithm, job_id) is a separate record
+- **Variant Support**: Properly handles product variants (e.g., "Curved backrest")
+- **Archi3D Ready**: Seamless integration with archi3D Phase 6
 
 ### Environment Variables
 

@@ -177,23 +177,29 @@ scoring:
 
 ### 4. Pipeline Architecture
 
-The pipeline is a **7-step sequential process** orchestrated through CLI commands:
+The pipeline is a **8-step sequential process** orchestrated through CLI commands:
 
 ```
-datasets/refs/*.jpg → ingest → preprocess-gt → [GT images]
-datasets/gens/*.glb → ────────→ render-cand  → [Candidate images]
-                                      ↓
-                                  package (creates scoring packets)
-                                      ↓
-                                   score (LLM vision API)
-                                      ↓
-                                  aggregate (compute statistics)
-                                      ↓
-                                   report (HTML visualization)
+database.csv / archi3D tables → ingest → preprocess-gt → [GT images]
+  + ref images in base_path  → ────────→ render-cand  → [Candidate images]
+                                              ↓
+                                          package (creates scoring packets)
+                                              ↓
+                                           score (LLM vision API)
+                                              ↓
+                                          aggregate (compute statistics)
+                                              ↓
+                                          translate (optional Italian translation)
+                                              ↓
+                                           report (bilingual HTML)
 ```
 
 **Key modules**:
-- `ingest.py`: Scans datasets, creates `manifest.jsonl` with item metadata
+- `ingest.py`: **Database-driven** data loading using configurable data sources (LegacySource or Archi3DSource)
+  - Reads from `database.csv` (legacy) or `tables/generations.csv` (archi3D)
+  - Resolves all paths relative to `base_path` (legacy) or `workspace` (archi3D)
+  - Creates `manifest.jsonl` with complete metadata (product_id, variant, algorithm, job_id)
+  - Supports multiple generations per item
 - `preprocess_gt.py`: Background removal (rembg), canvas standardization, labeling
 - `render_cycles.py`: Blender subprocess rendering with controlled camera/lighting
 - `packetize.py`: Assembles GT + candidate images into scoring packets
@@ -203,7 +209,68 @@ datasets/gens/*.glb → ────────→ render-cand  → [Candidate 
 
 **Data flow**: Each step reads from `outputs/` of previous step and writes to its own subdirectory. Pipeline state is implicit (file existence).
 
-### 5. LLM Client Abstraction
+### 5. Data Source Abstraction Layer (NEW)
+
+**Module**: `src/vfscore/data_sources/`
+
+VFScore now uses a **database-driven architecture** with pluggable data sources:
+
+#### Core Components
+
+**`base.py`** - Core abstractions:
+- `ItemRecord` dataclass: Unified data model for all items
+  - Supports (product_id, variant) as unique item identifier
+  - Includes algorithm, job_id for generation tracking
+  - Contains full metadata (product_name, manufacturer, categories)
+- `DataSource` protocol: Interface all sources must implement
+  - `load_items() -> Iterator[ItemRecord]`
+  - `get_source_info() -> dict`
+
+**`legacy_source.py`** - Legacy database.csv support:
+- Reads generation records from `database.csv`
+- Scans reference images from `base_path/dataset/`
+- Resolves GLB paths from database relative to `base_path`
+- Supports filtering by `selected_objects_optimized.csv`
+- No manual file copying required
+
+**`archi3d_source.py`** - Archi3D workspace integration:
+- Reads from `workspace/tables/items.csv` and `workspace/tables/generations.csv`
+- Workspace-relative path resolution
+- Filters by `run_id` if specified
+- Seamless Phase 6 integration
+
+#### Configuration
+
+**Legacy Mode** (`config.local.yaml`):
+```yaml
+data_source:
+  type: legacy
+  base_path: "C:/Users/.../Testing"  # All database.csv paths relative to this
+  dataset_folder: dataset             # Relative to base_path
+```
+
+**Archi3D Mode**:
+```yaml
+data_source:
+  type: archi3d
+  workspace: "C:/Users/.../Testing"
+  run_id: "2025-08-17_v1"  # Optional filter
+```
+
+#### Why This Architecture
+
+- **Single Source of Truth**: Database is authoritative, not filesystem
+- **Multiple Generations**: Each (product_id, variant, algorithm, job_id) is separate record
+- **Variant Support**: Properly handles product variants (e.g., "Curved backrest")
+- **Archi3D Ready**: Dual-source support for legacy and Phase 6 integration
+- **No Manual Copying**: Files read from original locations
+
+**Migration from old approach**:
+- Old: Filesystem scanning of `datasets/refs/` and `datasets/gens/`
+- New: Database-driven with configurable base_path
+- Result: 52/52 items found (was 7/52 with manual copying)
+
+### 6. LLM Client Abstraction
 
 **Base class**: `src/vfscore/llm/base.py:BaseLLMClient`
 - Abstract interface for LLM vision clients
