@@ -20,28 +20,34 @@ class LegacySource:
     a dataset folder where subdirectories are named with the pattern:
     <product_id>_<variant> or just <product_id> (when variant is empty).
 
+    All paths in database.csv (output_glb_relpath) are resolved relative to base_path.
+    The dataset_folder is also relative to base_path.
+
     Args:
-        database_csv: Path to database.csv file
-        dataset_folder: Path to folder containing reference image subdirectories
+        database_csv: Path to database.csv file (absolute)
+        base_path: Base directory for all legacy data (e.g., Testing/)
+        dataset_folder_rel: Relative path to dataset folder from base_path (e.g., "dataset")
         selected_objects_csv: Optional path to CSV file that filters which items to include
-        vfscore_root: Root path of VFScore project (for resolving relative GLB paths)
     """
 
     def __init__(
         self,
         database_csv: Path,
-        dataset_folder: Path,
+        base_path: Path,
+        dataset_folder_rel: str = "dataset",
         selected_objects_csv: Path | None = None,
-        vfscore_root: Path | None = None,
     ):
         self.database_csv = Path(database_csv)
-        self.dataset_folder = Path(dataset_folder)
+        self.base_path = Path(base_path)
+        self.dataset_folder = self.base_path / dataset_folder_rel
         self.selected_objects_csv = Path(selected_objects_csv) if selected_objects_csv else None
-        self.vfscore_root = Path(vfscore_root) if vfscore_root else Path.cwd()
 
         # Validate inputs
         if not self.database_csv.exists():
             raise FileNotFoundError(f"Database CSV not found: {self.database_csv}")
+
+        if not self.base_path.exists():
+            raise FileNotFoundError(f"Base path not found: {self.base_path}")
 
         if not self.dataset_folder.exists():
             raise FileNotFoundError(f"Dataset folder not found: {self.dataset_folder}")
@@ -104,11 +110,11 @@ class LegacySource:
             # Create item_id (composite identifier)
             item_id = f"{product_id}_{variant}" if variant else product_id
 
-            # Get GLB path
-            glb_path = self._resolve_glb_path(product_id, variant, gen_rec['job_id'])
+            # Get GLB path from database.csv (relative to base_path)
+            glb_path = self._resolve_glb_path(gen_rec['output_glb_relpath'])
             if not glb_path or not glb_path.exists():
                 skipped_no_glb += 1
-                print(f"[WARNING] GLB file not found for {item_id}, job_id {gen_rec['job_id'][:8]}")
+                print(f"[WARNING] GLB file not found: {gen_rec['output_glb_relpath']}")
                 continue
 
             # Create ItemRecord
@@ -265,61 +271,40 @@ class LegacySource:
         print(f"[WARNING] Could not parse folder name '{folder_name}', using as product_id")
         return folder_name, ""
 
-    def _resolve_glb_path(self, product_id: str, variant: str, job_id: str) -> Path | None:
+    def _resolve_glb_path(self, glb_relpath: str) -> Path | None:
         """
-        Resolve GLB file path by searching in datasets/gens directory.
+        Resolve GLB file path from database.csv relative path.
 
-        GLB files are stored in datasets/gens/<item_id>/ with filenames containing
-        a hash prefix 'h' followed by the first 8 characters of the job_id.
+        The output_glb_relpath in database.csv is relative to base_path.
 
         Example:
-            product_id: "188368"
-            variant: ""
-            job_id: "00d888f74e16a2f3cdfe2e17ea6dc7fd946efe93"
-            → Searches in: datasets/gens/188368/
-            → Matches filename containing: "_h00d888f7.glb"
+            base_path: "C:/Users/.../Testing"
+            glb_relpath: "runs\\2025-08-17_v1\\outputs\\hunyuan3d_v2p1_single\\188368__...h00d888f7.glb"
+            → Returns: "C:/Users/.../Testing/runs/2025-08-17_v1/outputs/hunyuan3d_v2p1_single/188368__...h00d888f7.glb"
 
         Args:
-            product_id: Product identifier
-            variant: Variant name (can be empty)
-            job_id: Full job_id hash from database
+            glb_relpath: Relative path from database.csv (Windows-style backslashes)
 
         Returns:
             Absolute Path to GLB file, or None if not found
         """
-        if not job_id:
+        if not glb_relpath:
             return None
 
-        # Compute item_id
-        item_id = f"{product_id}_{variant}" if variant else product_id
+        # Convert Windows backslashes to forward slashes for Path compatibility
+        glb_relpath_normalized = glb_relpath.replace('\\', '/')
 
-        # Look in datasets/gens/<item_id>/ directory
-        gens_dir = self.vfscore_root / "datasets" / "gens" / item_id
+        # Resolve relative to base_path
+        glb_path = self.base_path / glb_relpath_normalized
 
-        if not gens_dir.exists() or not gens_dir.is_dir():
-            # Try with just product_id if variant-based directory doesn't exist
-            if variant:
-                gens_dir = self.vfscore_root / "datasets" / "gens" / product_id
-                if not gens_dir.exists() or not gens_dir.is_dir():
-                    return None
-
-        # Create search pattern: filename should contain "_h<first_8_chars_of_job_id>.glb"
-        job_id_short = job_id[:8]
-        search_pattern = f"_h{job_id_short}.glb"
-
-        # Search for GLB file matching the job_id
-        for glb_file in gens_dir.glob("*.glb"):
-            if search_pattern in glb_file.name:
-                return glb_file
-
-        return None
+        return glb_path if glb_path.exists() else None
 
     def get_source_info(self) -> dict:
         """Return metadata about this data source."""
         return {
             "type": "legacy",
-            "database_csv": str(self.database_csv),
+            "base_path": str(self.base_path),
             "dataset_folder": str(self.dataset_folder),
+            "database_csv": str(self.database_csv),
             "selected_objects_csv": str(self.selected_objects_csv) if self.selected_objects_csv else None,
-            "vfscore_root": str(self.vfscore_root),
         }

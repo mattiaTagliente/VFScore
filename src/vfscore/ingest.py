@@ -1,167 +1,229 @@
-"""Data ingestion: scan datasets and create manifest."""
+"""Data ingestion: load items from data sources and create manifest."""
 
-import csv
 import json
 from pathlib import Path
-from typing import Dict, List
+from typing import Iterator
 
 from rich.console import Console
-from rich.progress import track
 
 from vfscore.config import Config
+from vfscore.data_sources import ItemRecord, DataSource, LegacySource, Archi3DSource
 
 console = Console()
 
 
-def scan_references(refs_dir: Path) -> Dict[str, List[Path]]:
-    """Scan reference photos directory and return mapping of item_id -> photo paths."""
-    refs_map = {}
-    
-    if not refs_dir.exists():
-        raise FileNotFoundError(f"References directory not found: {refs_dir}")
-    
-    for item_dir in refs_dir.iterdir():
-        if not item_dir.is_dir():
-            continue
-        
-        item_id = item_dir.name
-        photo_paths = []
-        
-        for photo_path in item_dir.glob("*"):
-            if photo_path.suffix.lower() in [".jpg", ".jpeg", ".png"]:
-                photo_paths.append(photo_path)
-        
-        if photo_paths:
-            refs_map[item_id] = sorted(photo_paths)
-    
-    return refs_map
+def create_data_source(config: Config) -> DataSource:
+    """
+    Create appropriate data source based on configuration.
+
+    Args:
+        config: VFScore configuration
+
+    Returns:
+        DataSource instance (LegacySource or Archi3DSource)
+
+    Raises:
+        ValueError: If data_source.type is invalid
+        FileNotFoundError: If required files are missing
+    """
+    source_type = config.data_source.type.lower()
+
+    if source_type == "legacy":
+        console.print("[bold]Using LegacySource (database.csv)[/bold]")
+
+        # Get base path (required)
+        base_path = config.data_source.base_path
+        if not base_path:
+            raise ValueError(
+                "data_source.base_path must be specified for legacy mode. "
+                "Add it to config.local.yaml"
+            )
+        if not base_path.exists():
+            raise FileNotFoundError(f"Base path not found: {base_path}")
+
+        # Get database CSV path
+        database_csv = config.data_source.database_csv
+        if not database_csv or not database_csv.exists():
+            raise FileNotFoundError(f"Database CSV not found: {database_csv}")
+
+        # Get dataset folder relative path
+        dataset_folder_rel = config.data_source.dataset_folder
+
+        # Get selected objects CSV (optional)
+        selected_objects_csv = config.data_source.selected_objects_csv
+        if selected_objects_csv and not selected_objects_csv.exists():
+            console.print(f"[yellow]Warning:[/yellow] selected_objects_csv not found, ignoring: {selected_objects_csv}")
+            selected_objects_csv = None
+
+        return LegacySource(
+            database_csv=database_csv,
+            base_path=base_path,
+            dataset_folder_rel=dataset_folder_rel,
+            selected_objects_csv=selected_objects_csv,
+        )
+
+    elif source_type == "archi3d":
+        console.print("[bold]Using Archi3DSource (tables/generations.csv)[/bold]")
+
+        # Get workspace path
+        workspace = config.data_source.workspace
+        if not workspace or not workspace.exists():
+            raise FileNotFoundError(f"Archi3D workspace not found: {workspace}")
+
+        # Get run_id (optional)
+        run_id = config.data_source.run_id
+
+        # Get custom table paths (optional)
+        items_csv = config.data_source.items_csv
+        generations_csv = config.data_source.generations_csv
+
+        return Archi3DSource(
+            workspace=workspace,
+            run_id=run_id,
+            items_csv=items_csv,
+            generations_csv=generations_csv,
+        )
+
+    else:
+        raise ValueError(
+            f"Invalid data_source.type: '{source_type}'. "
+            f"Must be 'legacy' or 'archi3d'"
+        )
 
 
-def scan_generated(gens_dir: Path) -> Dict[str, Path]:
-    """Scan generated objects directory and return mapping of item_id -> glb path."""
-    gens_map = {}
-    
-    if not gens_dir.exists():
-        raise FileNotFoundError(f"Generated objects directory not found: {gens_dir}")
-    
-    for item_dir in gens_dir.iterdir():
-        if not item_dir.is_dir():
-            continue
-        
-        item_id = item_dir.name
-        glb_files = list(item_dir.glob("*.glb"))
-        
-        if len(glb_files) == 0:
-            console.print(f"[yellow]Warning:[/yellow] No .glb file found for item {item_id}")
-            continue
-        
-        if len(glb_files) > 1:
-            console.print(f"[yellow]Warning:[/yellow] Multiple .glb files for item {item_id}, using first one")
-        
-        gens_map[item_id] = glb_files[0]
-    
-    return gens_map
+def create_manifest_from_items(items: Iterator[ItemRecord], output_path: Path) -> int:
+    """
+    Create manifest JSONL file from ItemRecord iterator.
 
+    Args:
+        items: Iterator of ItemRecord instances
+        output_path: Path to write manifest.jsonl
 
-def load_categories(categories_path: Path) -> Dict[str, Dict[str, str]]:
-    """Load category metadata from CSV."""
-    categories_map = {}
-    
-    if not categories_path.exists():
-        raise FileNotFoundError(f"Categories file not found: {categories_path}")
-    
-    with open(categories_path, "r", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            item_id = row["item_id"]
-            categories_map[item_id] = {
-                "l1": row["l1"],
-                "l2": row["l2"],
-                "l3": row["l3"],
-            }
-    
-    return categories_map
+    Returns:
+        Number of records written
 
-
-def create_manifest(
-    refs_map: Dict[str, List[Path]],
-    gens_map: Dict[str, Path],
-    categories_map: Dict[str, Dict[str, str]],
-    output_path: Path,
-) -> None:
-    """Create manifest JSONL file with all item metadata."""
-    # Find items that have both references and generated objects
-    valid_items = set(refs_map.keys()) & set(gens_map.keys())
-    
-    if not valid_items:
-        raise ValueError("No valid items found (items must have both refs and gens)")
-    
-    # Check for items without categories
-    missing_categories = valid_items - set(categories_map.keys())
-    if missing_categories:
-        console.print(f"[yellow]Warning:[/yellow] Items without categories: {missing_categories}")
-    
+    Raises:
+        ValueError: If no items provided
+    """
     manifest_records = []
-    
-    for item_id in sorted(valid_items):
-        # Get categories or use defaults
-        categories = categories_map.get(item_id, {"l1": "unknown", "l2": "unknown", "l3": "unknown"})
-        
+
+    for item in items:
         record = {
-            "item_id": item_id,
-            "ref_paths": [str(p) for p in refs_map[item_id]],
-            "glb_path": str(gens_map[item_id]),
-            "n_refs": len(refs_map[item_id]),
-            "l1": categories["l1"],
-            "l2": categories["l2"],
-            "l3": categories["l3"],
+            "item_id": item.item_id,
+            "product_id": item.product_id,
+            "variant": item.variant,
+            "ref_paths": [str(p) for p in item.ref_image_paths],
+            "glb_path": str(item.glb_path),
+            "algorithm": item.algorithm,
+            "job_id": item.job_id,
+            "n_refs": len(item.ref_image_paths),
+            # Metadata
+            "product_name": item.product_name or "",
+            "manufacturer": item.manufacturer or "",
+            "category_l1": item.category_l1 or "unknown",
+            "category_l2": item.category_l2 or "unknown",
+            "category_l3": item.category_l3 or "unknown",
+            "source_type": item.source_type,
         }
-        
+
         manifest_records.append(record)
-    
+
+    if not manifest_records:
+        raise ValueError("No items to write to manifest")
+
     # Write manifest
     output_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     with open(output_path, "w", encoding="utf-8") as f:
         for record in manifest_records:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
-    
-    console.print(f"[green]Manifest created with {len(manifest_records)} items[/green]")
-    
+
+    console.print(f"[green]Manifest created with {len(manifest_records)} records[/green]")
+
     # Print summary
+    console.print("\n[bold]Summary by item:[/bold]")
+
+    # Group by (product_id, variant)
+    items_by_key = {}
+    for record in manifest_records:
+        key = (record["product_id"], record["variant"])
+        if key not in items_by_key:
+            items_by_key[key] = []
+        items_by_key[key].append(record)
+
+    console.print(f"  Unique items: {len(items_by_key)}")
+    for (product_id, variant), records in sorted(items_by_key.items()):
+        variant_str = f" + '{variant}'" if variant else ""
+        console.print(f"    {product_id}{variant_str}: {len(records)} generation(s)")
+
+    # Summary by category
     console.print("\n[bold]Summary by category (l3):[/bold]")
     l3_counts = {}
     for record in manifest_records:
-        l3 = record["l3"]
+        l3 = record["category_l3"]
         l3_counts[l3] = l3_counts.get(l3, 0) + 1
-    
+
     for l3, count in sorted(l3_counts.items()):
-        console.print(f"  {l3}: {count} items")
+        console.print(f"  {l3}: {count} record(s)")
+
+    # Summary by algorithm
+    console.print("\n[bold]Summary by algorithm:[/bold]")
+    algo_counts = {}
+    for record in manifest_records:
+        algo = record["algorithm"]
+        algo_counts[algo] = algo_counts.get(algo, 0) + 1
+
+    for algo, count in sorted(algo_counts.items()):
+        console.print(f"  {algo}: {count} record(s)")
+
+    return len(manifest_records)
 
 
 def run_ingest(config: Config) -> Path:
-    """Run the ingestion process."""
-    console.print("\n[bold]Scanning datasets...[/bold]")
-    
-    # Scan directories
-    refs_map = scan_references(config.paths.refs_dir)
-    console.print(f"Found {len(refs_map)} items with reference photos")
-    
-    gens_map = scan_generated(config.paths.gens_dir)
-    console.print(f"Found {len(gens_map)} items with generated objects")
-    
-    categories_map = load_categories(config.paths.categories)
-    console.print(f"Loaded {len(categories_map)} category entries")
-    
+    """
+    Run the ingestion process using configured data source.
+
+    Args:
+        config: VFScore configuration
+
+    Returns:
+        Path to created manifest.jsonl file
+
+    Raises:
+        ValueError: If configuration is invalid or no items found
+        FileNotFoundError: If required files are missing
+    """
+    console.print("\n[bold]Loading items from data source...[/bold]")
+
+    # Create data source
+    data_source = create_data_source(config)
+
+    # Print source info
+    source_info = data_source.get_source_info()
+    console.print("\n[bold]Data Source Info:[/bold]")
+    for key, value in source_info.items():
+        console.print(f"  {key}: {value}")
+
+    # Load items
+    console.print(f"\n[bold]Loading items...[/bold]")
+    items = data_source.load_items()
+
     # Create manifest
     manifest_path = config.paths.out_dir / "manifest.jsonl"
-    create_manifest(refs_map, gens_map, categories_map, manifest_path)
-    
+    console.print(f"\n[bold]Creating manifest: {manifest_path}[/bold]")
+
+    try:
+        num_records = create_manifest_from_items(items, manifest_path)
+    except ValueError as e:
+        console.print(f"[red]Error:[/red] {e}")
+        raise
+
+    console.print(f"\n[green]Ingestion complete![/green]")
     return manifest_path
 
 
 if __name__ == "__main__":
     from vfscore.config import get_config
-    
+
     config = get_config()
     run_ingest(config)

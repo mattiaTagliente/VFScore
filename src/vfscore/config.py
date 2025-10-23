@@ -104,6 +104,24 @@ class TranslationConfig(BaseModel):
     cache_translations: bool = True
 
 
+class DataSourceConfig(BaseModel):
+    """Data source configuration for ingest."""
+
+    type: str = "legacy"  # "legacy" or "archi3d"
+
+    # Legacy source options
+    base_path: Path | None = None  # Base directory for all legacy data (e.g., Testing/)
+    dataset_folder: str = "dataset"  # Relative to base_path (e.g., "dataset")
+    database_csv: Path = Field(default=Path("database.csv"))  # Relative to VFScore root
+    selected_objects_csv: Path | None = Field(default=Path("selected_objects_optimized.csv"))
+
+    # Archi3D source options
+    workspace: Path | None = None
+    run_id: str | None = None
+    items_csv: Path | None = None
+    generations_csv: Path | None = None
+
+
 class Config(BaseModel):
     """Main configuration model."""
 
@@ -115,6 +133,7 @@ class Config(BaseModel):
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
     phase_1_features: Phase1Config = Field(default_factory=Phase1Config)
     translation: TranslationConfig = Field(default_factory=TranslationConfig)
+    data_source: DataSourceConfig = Field(default_factory=DataSourceConfig)
 
     @classmethod
     def load(cls, config_path: Path | str = "config.yaml") -> "Config":
@@ -164,6 +183,13 @@ class Config(BaseModel):
             path = getattr(self.paths, field_name)
             if not path.is_absolute():
                 setattr(self.paths, field_name, project_root / path)
+
+        # Resolve data_source paths (base_path should be absolute, dataset_folder is relative)
+        for field_name in ["base_path", "database_csv", "selected_objects_csv",
+                          "workspace", "items_csv", "generations_csv"]:
+            path = getattr(self.data_source, field_name)
+            if path is not None and isinstance(path, Path) and not path.is_absolute():
+                setattr(self.data_source, field_name, project_root / path)
 
 
 def _deep_merge(base: dict, override: dict) -> dict:
