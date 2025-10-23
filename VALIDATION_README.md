@@ -1,0 +1,306 @@
+# Validation Study - Quick Reference
+
+## The Two Issues You Raised (FIXED)
+
+### ✅ Issue 1: Enhanced Report Generator Not Used by Default
+
+**CLARIFICATION**: There are TWO separate report generators:
+
+| Report Generator | Purpose | Used When | Command |
+|-----------------|---------|-----------|---------|
+| **`src/vfscore/report.py`** | Standard pipeline reports | Normal VFScore usage | `vfscore report` |
+| **`validation_report_generator_enhanced.py`** | Validation study reports | Validation studies only | Manual use |
+
+The **enhanced validation report** is NOT used by the standard pipeline. It's specifically for validation studies and includes:
+- Parameter sweep comparison
+- Interactive help menu (ICC, MAD, correlation explanations)
+- Statistical metrics visualization
+
+**The standard `vfscore report` already has bilingual support** - so normal users get English/Italian reports automatically!
+
+### ✅ Issue 2: validation_study.py Only Runs Dry Run (FIXED)
+
+**FIXED**: `validation_study.py` has been updated to actually run the study!
+
+**Before** (old behavior):
+```bash
+python validation_study.py
+# Output: Cost estimation only, showed TODO messages
+```
+
+**Now** (fixed behavior):
+```bash
+# Dry run (cost estimation only)
+python validation_study.py
+
+# Actually run the study
+python validation_study.py --run
+
+# Run without confirmation
+python validation_study.py --run --yes
+```
+
+---
+
+## How to Run Validation Study (Step by Step)
+
+### Step 1: Check What Will Happen (Dry Run)
+
+```bash
+python validation_study.py
+```
+
+**Output**:
+```
+================================================================================
+VALIDATION STUDY COST ESTIMATION
+================================================================================
+Objects: 9
+Parameter settings: 10
+Repeats per setting: 5
+Total API calls: 450
+Estimated time (free tier): 3h 45m
+================================================================================
+
+[DRY RUN] Skipping actual evaluation.
+[INFO] To run the actual study, add --run flag
+```
+
+### Step 2: Run the Actual Study
+
+```bash
+python validation_study.py --run
+```
+
+**You'll be asked**:
+```
+[WARNING] This will make 450 API calls
+           and take approximately 3h 45m.
+Do you want to proceed? (yes/no):
+```
+
+Type `yes` to proceed.
+
+**Or skip confirmation**:
+```bash
+python validation_study.py --run --yes
+```
+
+### Step 3: Wait for Completion
+
+The script will:
+1. Loop through 10 parameter settings
+2. For each setting, score 9 objects with 5 repeats
+3. Call `vfscore score --temperature X --top-p Y` for each
+4. Save results to batch directories
+
+**Progress output**:
+```
+================================================================================
+[1/10] Running BASELINE: temp=0.0, top_p=1.0
+================================================================================
+
+  Scoring item 558736 (5 repeats)...
+    [OK] Successfully scored 558736
+...
+```
+
+### Step 4: Automatic Post-Processing
+
+The script automatically handles all post-processing:
+- ✅ **Aggregates** all batch results (`vfscore aggregate`)
+- ✅ **Generates standard report** (`vfscore report`)
+- ✅ **Generates enhanced validation report** (bilingual with statistics)
+
+**No manual steps needed!** Everything is done automatically.
+
+---
+
+## Understanding the Results
+
+### Where Results Are Saved
+
+```
+outputs/llm_calls/gemini-2.5-pro/558736/
+├── batch_20251023_140000_user_mattia/     # Setting 1: temp=0.0, top_p=1.0
+│   ├── rep_1.json (metadata: temp=0.0, top_p=1.0, run_id=xxx)
+│   ├── rep_2.json
+│   ├── rep_3.json
+│   ├── rep_4.json
+│   ├── rep_5.json
+│   └── batch_info.json
+├── batch_20251023_141500_user_mattia/     # Setting 2: temp=0.2, top_p=1.0
+│   └── ...
+└── ... (10 batches total per item)
+```
+
+### Metadata in Each Result
+
+```json
+{
+  "item_id": "558736",
+  "score": 0.850,
+  "metadata": {
+    "temperature": 0.5,        ← Parameter used
+    "top_p": 0.95,             ← Parameter used
+    "run_id": "uuid-here",     ← Unique per evaluation
+    "timestamp": "2025-10-23...",
+    "model_name": "gemini-2.5-pro"
+  }
+}
+```
+
+---
+
+## Options and Customization
+
+```bash
+# Full options
+python validation_study.py [OPTIONS]
+
+Options:
+  --run              Actually run (default: dry run only)
+  --yes              Skip confirmation
+  --repeats N        Repeats per setting (default: 5)
+  --model MODEL      LLM model (default: gemini-2.5-pro)
+```
+
+**Examples**:
+
+```bash
+# Quick test with fewer repeats
+python validation_study.py --run --yes --repeats 3
+
+# Use faster model
+python validation_study.py --run --model gemini-2.5-flash
+
+# Full study
+python validation_study.py --run --repeats 5 --model gemini-2.5-pro
+```
+
+---
+
+## Two Report Types Explained
+
+### 1. Standard Pipeline Report (`vfscore report`)
+
+**Purpose**: Show individual item scores from normal VFScore usage
+
+**Features**:
+- ✅ Bilingual (English/Italian)
+- ✅ Item-by-item results
+- ✅ Confidence metrics (MAD-based)
+- ✅ Automatic via pipeline
+
+**Generated by**: `src/vfscore/report.py`
+
+**Usage**:
+```bash
+vfscore report
+# Opens: outputs/report/index.html
+```
+
+### 2. Enhanced Validation Report (`validation_report_generator_enhanced.py`)
+
+**Purpose**: Compare parameter sweep results for validation studies
+
+**Features**:
+- ✅ Bilingual (English/Italian)
+- ✅ Parameter sweep comparison
+- ✅ Interactive help menu (ICC, MAD, correlation explained)
+- ✅ Charts for stability analysis
+- ✅ Statistical metrics
+
+**Generated by**: `validation_report_generator_enhanced.py` (manual use)
+
+**Usage**: See documentation in the file itself
+
+---
+
+## Common Questions
+
+### Q: Why two report generators?
+
+**A**: Different purposes:
+- **Standard**: For daily VFScore usage showing individual scores
+- **Enhanced**: For validation studies comparing multiple parameter settings
+
+### Q: Does `vfscore report` use the enhanced generator?
+
+**A**: No. The standard pipeline uses `src/vfscore/report.py`. The enhanced generator is for validation studies only.
+
+### Q: How do I get the enhanced validation report?
+
+**A**: After running the validation study, you need to manually use `validation_report_generator_enhanced.py` to analyze the batches and generate the report.
+
+### Q: Why doesn't `python validation_study.py` do anything?
+
+**A**: That's the dry run mode (cost estimation only). Use `--run` flag to actually execute:
+```bash
+python validation_study.py --run
+```
+
+### Q: Can I stop and resume the study?
+
+**A**: The study doesn't support resume. If you stop it, you'll need to restart. However, already-completed batches are saved, so you could manually continue from where you stopped by running `vfscore score` with appropriate parameters.
+
+---
+
+## Troubleshooting
+
+### "No objects to score"
+
+**Solution**: Ensure `selected_objects_optimized.csv` exists, or the script will use mock data for demonstration.
+
+### "vfscore: command not found"
+
+**Solution**: Activate virtual environment:
+```bash
+.\venv\Scripts\activate  # Windows
+source venv/bin/activate  # macOS/Linux
+```
+
+### Study runs but takes too long
+
+**Solution**: Use fewer repeats or faster model:
+```bash
+python validation_study.py --run --repeats 3 --model gemini-2.5-flash
+```
+
+---
+
+## Complete Workflow (Single Command!)
+
+```bash
+# 1. Check costs (dry run)
+python validation_study.py
+
+# 2. Run complete E2E study (ONE COMMAND does everything!)
+python validation_study.py --run
+
+# That's it! The script automatically:
+#   - Runs parameter sweep (scoring)
+#   - Aggregates all results
+#   - Generates standard HTML report
+#   - Generates enhanced validation report
+#
+# Final outputs:
+#   - outputs/report/index.html (standard report)
+#   - validation_results_<timestamp>/validation_report.html (validation report)
+```
+
+---
+
+## Files Reference
+
+| File | Purpose | Usage |
+|------|---------|-------|
+| `validation_study.py` | Orchestrator (NOW ACTUALLY RUNS!) | `python validation_study.py --run` |
+| `validation_report_generator_enhanced.py` | Enhanced report (validation only) | Manual use |
+| `VALIDATION_STUDY_USAGE.md` | Detailed usage guide | Reference |
+| `PHASE1_IMPLEMENTATION_COMPLETE.md` | Implementation documentation | Reference |
+| `test_phase1.py` | Verification tests | `python test_phase1.py` |
+
+---
+
+**Summary**: Both issues are now fixed! The validation study actually runs (use `--run` flag), and the enhanced report generator is clearly documented as being for validation studies only, not the standard pipeline.
