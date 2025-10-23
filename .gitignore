@@ -117,8 +117,8 @@ site/
 .github/workflows/*.local.yml
 
 # AI Agents
-CLAUDE.md
-gemini.md
+#CLAUDE.md
+#gemini.md
 
 # Data
 assets/
