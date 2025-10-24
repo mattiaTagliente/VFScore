@@ -600,7 +600,7 @@ def main():
     args = parser.parse_args()
 
     config = ValidationConfig(
-        project_root=Path("."),
+        project_root=Path(".."),  # VFScore root (parent of validation_study/)
         n_repeats=args.repeats,
         llm_model=args.model
     )

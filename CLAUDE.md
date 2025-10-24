@@ -840,3 +840,7 @@ for params in parameter_grid:
 
 **Legacy results compatibility**
 → Old results without batch structure are automatically treated as single "legacy" batch
+
+## Documentation
+Keep the documentation in 3 files: changelog, guide, readme. Do not create other files outside these 3; if you find other documentation files, delete them and distribute the information on these 3 file as appropriate.
+Update the documentaton and the claude.md file after every relevant modification to the code.

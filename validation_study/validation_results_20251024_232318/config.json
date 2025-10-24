@@ -1,0 +1,16 @@
+{
+  "temperatures": [
+    0.2,
+    0.5,
+    0.8
+  ],
+  "top_p_values": [
+    1.0,
+    0.95,
+    0.9
+  ],
+  "n_repeats": 5,
+  "llm_model": "gemini-2.5-pro",
+  "parameter_settings": 10,
+  "dry_run": true
+}
