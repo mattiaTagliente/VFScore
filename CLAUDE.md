@@ -6,6 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 VFScore is an automated pipeline for evaluating the **visual fidelity** of generated 3D objects (.glb files) against real product photographs using multimodal LLMs (primarily Google Gemini). It focuses exclusively on appearance (color, materials, textures) - geometry is assessed separately.
 
+The project includes two main components:
+1. **VFScore Core Pipeline**: Automated scoring system for 3D object visual fidelity
+2. **Validation Study Framework**: Statistical validation system for reliability and human agreement assessment
+
 ## Essential Commands
 
 ### Setup and Installation
@@ -353,6 +357,48 @@ rubric_weights = {
 
 **Important**: Geometry/silhouette is explicitly excluded. This is enforced in the prompt templates.
 
+## Project Structure
+
+```
+VFScore/
+├── src/vfscore/               # Main package
+│   ├── __main__.py           # CLI entry point (Typer)
+│   ├── config.py             # Configuration management
+│   ├── data_sources/         # Data source abstraction
+│   │   ├── base.py           # ItemRecord, DataSource protocol
+│   │   ├── legacy_source.py  # Legacy database.csv support
+│   │   └── archi3d_source.py # Archi3D workspace integration
+│   ├── llm/                  # LLM client implementations
+│   │   ├── base.py           # BaseLLMClient
+│   │   ├── gemini.py         # GeminiClient
+│   │   └── translator.py     # TranslatorClient
+│   └── [pipeline modules]    # ingest, preprocess_gt, render, etc.
+├── validation_study/          # Validation study framework
+│   ├── README.md             # Quick start
+│   ├── GUIDE.md              # Comprehensive guide
+│   ├── CHANGELOG.md          # Version history
+│   ├── validation_study.py   # Orchestrator
+│   ├── validation_report_generator_enhanced.py  # Enhanced reports
+│   └── docs/                 # Archived documentation
+├── tests/                     # Test files
+│   ├── test_setup.py         # Setup verification
+│   ├── test_phase1.py        # Validation framework tests
+│   ├── test_installation.py  # Installation tests
+│   └── test_legacy_source.py # Data source tests
+├── datasets/                  # Data (not in git)
+├── metadata/                  # Category metadata
+├── assets/                    # HDRI lighting
+├── outputs/                   # Generated outputs (not in git)
+├── README.md                  # Project overview
+├── GUIDE.md                   # Complete guide
+├── CHANGELOG.md               # Version history
+├── CLAUDE.md                  # This file
+├── config.yaml                # Shared config (commit)
+├── config.local.yaml          # Local config (DO NOT commit)
+├── .env                       # API keys (DO NOT commit)
+└── setup.py                   # Interactive setup script
+```
+
 ## File Organization Rules
 
 ### Never Commit
@@ -360,12 +406,15 @@ rubric_weights = {
 - `config.local.yaml` - Machine-specific settings
 - `outputs/` - Generated artifacts (too large)
 - `venv/` - Virtual environment
+- `validation_study/validation_results_*/` - Validation study outputs
 
 ### Always Commit
 - `config.yaml` - Shared default configuration
 - `src/` - Source code
+- `validation_study/*.py` - Validation study scripts
+- `validation_study/*.md` - Validation study documentation
 - `tests/` - Test files
-- Documentation (README.md, etc.)
+- Documentation (README.md, GUIDE.md, CHANGELOG.md, CLAUDE.md)
 
 ### Virtual Environment
 **Use `venv/` (not `.venv/`)** - The project standard is `venv/` for consistency.
@@ -568,14 +617,63 @@ Before considering documentation complete:
 
 ### 7. Validation Study Framework (NEW)
 
-**Critical**: VFScore now includes comprehensive validation study support for reliability assessment:
+**Location**: `validation_study/` subdirectory with complete documentation
+
+**Critical**: VFScore now includes a comprehensive validation study framework for statistical assessment of reliability, stability, and human agreement.
+
+#### Two Report Types
+
+**Important Distinction**:
+1. **Standard Pipeline Reports** (`vfscore report`): Bilingual HTML reports for normal VFScore usage
+2. **Enhanced Validation Reports** (`validation_report_generator_enhanced.py`): Parameter sweep analysis with statistical metrics
+
+The enhanced validation report is **NOT** used by the standard pipeline - it's specifically for validation studies.
+
+#### Core Validation Metrics
+
+- **ICC (Intra-Class Correlation)**: Measures repeatability (target ≥ 0.85)
+- **MAD (Median Absolute Deviation)**: Quantifies score dispersion
+- **Confidence Intervals**: 95% CI for mean score estimates
+- **Human Agreement**: Pearson & Spearman correlations (target ρ ≥ 0.7)
+- **Error Metrics**: MAE and RMSE quantification
+
+#### Validation Study Orchestrator
+
+**File**: `validation_study/validation_study.py`
+
+**Features**:
+- Automated parameter sweep across temperature/top-p combinations
+- Cost estimation (dry run mode)
+- Complete workflow from scoring to enhanced report generation
+- No manual steps required
+
+**Usage**:
+```bash
+# Dry run (cost estimation only)
+cd validation_study
+python validation_study.py
+
+# Run validation study
+python validation_study.py --run --yes
+
+# Quick test with fewer repeats
+python validation_study.py --run --yes --repeats 3 --model gemini-2.5-flash
+```
+
+**Default Study Design**:
+- 9 diverse objects (3 manufacturers × 3 categories)
+- 10 parameter combinations (1 baseline + 3×3 grid)
+- 5 repeats per setting for statistical robustness
+- Total: 450 API calls (~4-5 hours with Gemini free tier)
 
 #### Parameter Sweep Support
-- **CLI Parameters**: `vfscore score --temperature 0.5 --top-p 0.95`
-- **Run ID Tracking**: Each evaluation gets unique UUID for statistical independence
-- **Metadata Logging**: All results include temperature, top_p, run_id, timestamp, model_name
 
-#### Enhanced Result Format
+**CLI Parameters**: Added to `vfscore score` command
+```bash
+vfscore score --temperature 0.5 --top-p 0.95 --repeats 5
+```
+
+**Metadata Logging**: All results include complete provenance
 ```json
 {
   "item_id": "558736",
@@ -585,32 +683,68 @@ Before considering documentation complete:
   "metadata": {
     "temperature": 0.5,
     "top_p": 0.95,
-    "run_id": "a7f3c4e2-9d1b-4a8f-b6e5-3c2f1a8d9e7b",
+    "run_id": "unique-uuid",
     "timestamp": "2025-10-23T14:23:45.123456",
     "model_name": "gemini-2.5-pro"
   }
 }
 ```
 
-#### Key Components
-- **`BaseLLMClient.__init__()`**: Now accepts `run_id` parameter (auto-generates if not provided)
-- **`GeminiClient.score_visual_fidelity()`**: Adds metadata dict to all results
-- **`scoring.py:score_item_with_repeats()`**: Generates unique run_id per repeat
-- **`scoring.py:get_llm_client()`**: Accepts temperature, top_p, run_id parameters
-- **Prompts**: Include run_id nonce to prevent LLM caching
+**Run ID Tracking**: Each evaluation gets unique UUID to:
+- Ensure statistical independence
+- Prevent LLM caching (run_id included in prompts as nonce)
+- Enable traceability of individual evaluations
 
-#### Validation Report Generator
-- **File**: `validation_report_generator_enhanced.py`
-- **Features**:
-  - Full English/Italian bilingual support
-  - Interactive help menu with concept explanations (ICC, MAD, Correlation, Temperature, Top-P, etc.)
-  - Language toggle with localStorage persistence
-  - Professional UI with Chart.js and Plotly visualizations
-  - Download options (JSON/CSV)
+#### Enhanced Validation Report Generator
+
+**File**: `validation_study/validation_report_generator_enhanced.py`
+
+**Features**:
+- **Bilingual Support**: Complete English/Italian with language toggle
+- **Interactive Help Menu**: Floating `?` button with concept explanations
+  - ICC, MAD, Correlation, Temperature, Top-P, CI, MAE, RMSE
+  - Each concept has detailed explanation in both languages
+- **Visual Analytics**:
+  - ICC trends across parameter settings
+  - MAD analysis (stability visualization)
+  - Correlation scatter plots (human agreement)
+  - Parameter impact charts
+- **Data Export**: Download complete results (JSON) and summaries (CSV)
+- **Professional UI**: Modern gradient design with Chart.js and Plotly
+
+#### Implementation Details
+
+**Key Files Modified**:
+- `src/vfscore/llm/base.py` - Added `run_id` parameter to `BaseLLMClient.__init__()`
+- `src/vfscore/llm/gemini.py` - Added metadata dict to all result JSONs
+- `src/vfscore/scoring.py` - Generates unique run_id per repeat, passes parameters
+- `src/vfscore/__main__.py` - Added `--temperature` and `--top-p` CLI options
+
+**Prompts**: Include run_id nonce to prevent LLM caching:
+```python
+f"This evaluation has unique ID: {run_id}. Please provide a fresh, independent assessment."
+```
+
+#### Validation Study Documentation
+
+**Location**: `validation_study/`
+- `README.md` - Quick start and overview
+- `GUIDE.md` - Comprehensive guide with metric explanations
+- `CHANGELOG.md` - Version history
+- `docs/` - Archived implementation documentation
 
 #### Validation Study Workflow
+
+**Complete Automated Workflow**:
+1. Run parameter sweep (10 settings × 9 objects × 5 repeats)
+2. Aggregate all batch results
+3. Generate standard HTML report
+4. Generate enhanced validation report with statistics
+5. No manual steps required!
+
+**Example Manual Parameter Sweep**:
 ```python
-# Example: Parameter sweep
+# Custom parameter grid
 parameter_grid = [
     {"temp": 0.0, "top_p": 1.0},  # Baseline (deterministic)
     {"temp": 0.2, "top_p": 1.0},  # Low temperature
@@ -629,32 +763,14 @@ for params in parameter_grid:
     subprocess.run(cmd)
 ```
 
-#### Usage from CLI
-```bash
-# Run with custom parameters
-vfscore score --repeats 5 --temperature 0.5 --top-p 0.95
-
-# Run with defaults from config
-vfscore score --repeats 5
-
-# Each repeat gets unique run_id for independence
-```
-
-#### Implementation Files
-- `src/vfscore/llm/base.py` - Added run_id support
-- `src/vfscore/llm/gemini.py` - Added metadata logging
-- `src/vfscore/scoring.py` - Parameter sweep support
-- `src/vfscore/__main__.py` - CLI temperature/top_p options
-- `validation_study.py` - Validation study orchestrator
-- `validation_report_generator_enhanced.py` - Enhanced bilingual report
-- `PHASE1_IMPLEMENTATION_COMPLETE.md` - Full documentation
-- `test_phase1.py` - Verification tests
-
 #### Why This Matters
-- Enables systematic validation studies (ICC, MAD, correlation analysis)
-- Ensures statistical independence across repeated evaluations
-- Supports reproducibility with complete metadata tracking
-- Ready for stakeholder presentations with bilingual reports
+
+- **Before Production**: Verify consistency before deploying to stakeholders
+- **Model Comparison**: Compare different LLM models or versions
+- **Parameter Optimization**: Find best temperature/top-p settings based on multi-criteria analysis
+- **Reliability Documentation**: Provide statistical evidence of system quality
+- **Human Agreement**: Validate automated scoring against expert judgments
+- **Stakeholder Presentations**: Bilingual reports with professional visualizations
 
 ## Important Implementation Details
 
