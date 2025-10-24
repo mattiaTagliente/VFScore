@@ -177,32 +177,35 @@ class ValidationStudy:
         print("[INFO] This only needs to be done once for all parameter settings")
 
         try:
+            # All vfscore commands must run from project root
+            vfscore_root = self.config.project_root
+
             # Run ingest
             print("\n[1/4] Running ingest...")
-            result = subprocess.run(["vfscore", "ingest"], capture_output=True, text=True)
+            result = subprocess.run(["vfscore", "ingest"], capture_output=True, text=True, cwd=str(vfscore_root))
             if result.returncode != 0:
-                print(f"[ERROR] Ingest failed: {result.stderr[:200]}")
+                print(f"[ERROR] Ingest failed: {result.stderr[:500]}")
                 return costs
 
             # Run preprocess-gt
             print("[2/4] Running preprocess-gt...")
-            result = subprocess.run(["vfscore", "preprocess-gt"], capture_output=True, text=True)
+            result = subprocess.run(["vfscore", "preprocess-gt"], capture_output=True, text=True, cwd=str(vfscore_root))
             if result.returncode != 0:
-                print(f"[ERROR] Preprocess failed: {result.stderr[:200]}")
+                print(f"[ERROR] Preprocess failed: {result.stderr[:500]}")
                 return costs
 
             # Run render-cand
             print("[3/4] Running render-cand...")
-            result = subprocess.run(["vfscore", "render-cand"], capture_output=True, text=True)
+            result = subprocess.run(["vfscore", "render-cand"], capture_output=True, text=True, cwd=str(vfscore_root))
             if result.returncode != 0:
-                print(f"[ERROR] Render failed: {result.stderr[:200]}")
+                print(f"[ERROR] Render failed: {result.stderr[:500]}")
                 return costs
 
             # Run package
             print("[4/4] Running package...")
-            result = subprocess.run(["vfscore", "package"], capture_output=True, text=True)
+            result = subprocess.run(["vfscore", "package"], capture_output=True, text=True, cwd=str(vfscore_root))
             if result.returncode != 0:
-                print(f"[ERROR] Package failed: {result.stderr[:200]}")
+                print(f"[ERROR] Package failed: {result.stderr[:500]}")
                 return costs
 
             print("[OK] Pipeline preparation complete - packets created")
@@ -239,8 +242,8 @@ class ValidationStudy:
                         "--top-p", str(top_p),
                     ]
 
-                    # Run scoring
-                    result = subprocess.run(cmd, capture_output=True, text=True)
+                    # Run scoring from project root
+                    result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(vfscore_root))
 
                     if result.returncode == 0:
                         print(f"    [OK] Successfully scored {item_id}")
@@ -274,7 +277,7 @@ class ValidationStudy:
 
             try:
                 result = subprocess.run(["vfscore", "aggregate"],
-                                      capture_output=True, text=True)
+                                      capture_output=True, text=True, cwd=str(vfscore_root))
                 if result.returncode == 0:
                     print("[OK] Aggregation completed successfully")
                 else:
@@ -291,7 +294,7 @@ class ValidationStudy:
 
             try:
                 result = subprocess.run(["vfscore", "report"],
-                                      capture_output=True, text=True)
+                                      capture_output=True, text=True, cwd=str(vfscore_root))
                 if result.returncode == 0:
                     print("[OK] Standard report generated successfully")
                     print("[INFO] Standard report location: outputs/report/index.html")
