@@ -28,7 +28,8 @@ app = typer.Typer(
     help="Visual Fidelity Scoring for 3D Generated Objects",
     add_completion=False,
 )
-console = Console()
+# Use legacy_windows=True for Windows compatibility with Unicode characters
+console = Console(legacy_windows=True)
 
 
 def version_callback(value: bool) -> None:
@@ -75,9 +76,9 @@ def ingest(
     
     try:
         manifest_path = run_ingest(config)
-        console.print(f"[green]✓[/green] Manifest created: {manifest_path}")
+        console.print(f"[green][OK][/green] Manifest created: {manifest_path}")
     except Exception as e:
-        console.print(f"[red]✗[/red] Ingestion failed: {e}")
+        console.print(f"[red][ERROR][/red] Ingestion failed: {e}")
         raise typer.Exit(code=1)
 
 
@@ -101,9 +102,9 @@ def preprocess_gt(
     
     try:
         run_preprocess_gt(config)
-        console.print("[green]✓[/green] Ground truth images preprocessed")
+        console.print("[green][OK][/green] Ground truth images preprocessed")
     except Exception as e:
-        console.print(f"[red]✗[/red] GT preprocessing failed: {e}")
+        console.print(f"[red][ERROR][/red] GT preprocessing failed: {e}")
         raise typer.Exit(code=1)
 
 
@@ -132,9 +133,9 @@ def render_cand(
     
     try:
         run_render_candidates(config)
-        console.print("[green]✓[/green] Candidates rendered")
+        console.print("[green][OK][/green] Candidates rendered")
     except Exception as e:
-        console.print(f"[red]✗[/red] Rendering failed: {e}")
+        console.print(f"[red][ERROR][/red] Rendering failed: {e}")
         raise typer.Exit(code=1)
 
 
@@ -161,9 +162,9 @@ def package(
     
     try:
         run_packetize(config)
-        console.print("[green]✓[/green] Scoring packets created")
+        console.print("[green][OK][/green] Scoring packets created")
     except Exception as e:
-        console.print(f"[red]✗[/red] Packaging failed: {e}")
+        console.print(f"[red][ERROR][/red] Packaging failed: {e}")
         raise typer.Exit(code=1)
 
 
@@ -199,9 +200,9 @@ def score(
             temperature=temperature,
             top_p=top_p
         )
-        console.print(f"[green]✓[/green] Scoring complete using {model}")
+        console.print(f"[green][OK][/green] Scoring complete using {model}")
     except Exception as e:
-        console.print(f"[red]✗[/red] Scoring failed: {e}")
+        console.print(f"[red][ERROR][/red] Scoring failed: {e}")
         raise typer.Exit(code=1)
 
 
@@ -238,9 +239,9 @@ def aggregate(
             batch_pattern=batch_pattern,
             after_date=after_date,
         )
-        console.print("[green]✓[/green] Scores aggregated")
+        console.print("[green][OK][/green] Scores aggregated")
     except Exception as e:
-        console.print(f"[red]✗[/red] Aggregation failed: {e}")
+        console.print(f"[red][ERROR][/red] Aggregation failed: {e}")
         raise typer.Exit(code=1)
 
 
@@ -274,9 +275,9 @@ def translate(
 
     try:
         run_translation(config, model=model, force=force)
-        console.print(f"[green]✓[/green] Translation complete using {model}")
+        console.print(f"[green][OK][/green] Translation complete using {model}")
     except Exception as e:
-        console.print(f"[red]✗[/red] Translation failed: {e}")
+        console.print(f"[red][ERROR][/red] Translation failed: {e}")
         raise typer.Exit(code=1)
 
 
@@ -301,9 +302,9 @@ def report(
     
     try:
         report_path = run_report(config)
-        console.print(f"[green]✓[/green] Report generated: {report_path}")
+        console.print(f"[green][OK][/green] Report generated: {report_path}")
     except Exception as e:
-        console.print(f"[red]✗[/red] Report generation failed: {e}")
+        console.print(f"[red][ERROR][/red] Report generation failed: {e}")
         raise typer.Exit(code=1)
 
 
@@ -351,7 +352,7 @@ def run_all(
             console.print(f"[red]Pipeline stopped at: {step_name}[/red]")
             raise typer.Exit(code=1)
 
-    console.print("\n[bold green]✓ Pipeline complete![/bold green]")
+    console.print("\n[bold green][OK] Pipeline complete![/bold green]")
 
 
 if __name__ == "__main__":

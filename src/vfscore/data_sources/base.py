@@ -9,6 +9,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, List, Iterator
 
+# Import make_item_id for consistent item_id generation
+from vfscore.utils import make_item_id
+
 
 @dataclass
 class ItemRecord:
@@ -58,8 +61,8 @@ class ItemRecord:
         if not self.product_id:
             raise ValueError("product_id cannot be empty")
 
-        # Validate item_id matches expected format
-        expected_item_id = f"{self.product_id}_{self.variant}" if self.variant else self.product_id
+        # Validate item_id matches expected format (using make_item_id for consistency)
+        expected_item_id = make_item_id(self.product_id, self.variant)
         if self.item_id != expected_item_id:
             raise ValueError(
                 f"item_id '{self.item_id}' doesn't match expected format '{expected_item_id}'"
