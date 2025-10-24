@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 from typing import Iterator, List, Dict, Tuple, Set
 from .base import ItemRecord
+from ..utils import make_item_id
 
 
 class LegacySource:
@@ -107,8 +108,8 @@ class LegacySource:
                 print(f"[WARNING] No reference images found for {product_id} + variant '{variant}'")
                 continue
 
-            # Create item_id (composite identifier)
-            item_id = f"{product_id}_{variant}" if variant else product_id
+            # Create item_id using utility function
+            item_id = make_item_id(product_id, variant)
 
             # Get GLB path from database.csv (relative to base_path)
             glb_path = self._resolve_glb_path(gen_rec['output_glb_relpath'])

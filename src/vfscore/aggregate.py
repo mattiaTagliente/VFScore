@@ -355,9 +355,9 @@ def run_aggregation(
         item_id = result["item_id"]
         if item_id in manifest_map:
             manifest_record = manifest_map[item_id]
-            result["l1"] = manifest_record["l1"]
-            result["l2"] = manifest_record["l2"]
-            result["l3"] = manifest_record["l3"]
+            result["l1"] = manifest_record["category_l1"]
+            result["l2"] = manifest_record["category_l2"]
+            result["l3"] = manifest_record["category_l3"]
             result["n_gt"] = manifest_record["n_refs"]
     
     # Create output directory

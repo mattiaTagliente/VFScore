@@ -246,6 +246,38 @@ vfscore score --model gemini-2.5-pro --repeats 5
 - Report JavaScript handles dynamic language switching without page reload
 - Configuration validation added for translation settings via Pydantic
 
+### Added - Phase 3: Pipeline Updates 🔄
+
+#### Manifest-Driven Pipeline Architecture
+- **Pipeline Refactoring**: All modules now read from `manifest.jsonl` instead of filesystem/database access
+- **Database Abstraction**: Centralized data source logic with consistent ItemRecord model
+- **Field Name Corrections**: Fixed field naming inconsistencies (`l1/l2/l3` → `category_l1/category_l2/category_l3`)
+
+#### Updated Pipeline Modules
+- **`ingest.py`**: Creates `manifest.jsonl` with complete metadata from data source
+- **`preprocess_gt.py`**: Reads manifest to find reference images and process them
+- **`render_cycles.py`**: Reads manifest to find GLB paths for rendering
+- **`packetize.py`**: Reads manifest to create scoring packets (uses corrected field names)
+- **`aggregate.py`**: Reads manifest to enrich results with category metadata
+- **`report.py`**: Uses aggregated results that include enriched manifest data
+
+#### Utility Enhancements
+- **`utils.py`**: Added `make_item_id(product_id, variant)` utility function for consistent item ID generation
+- **`archi3d_source.py`**: Updated to use `make_item_id()` for consistent naming
+- **`legacy_source.py`**: Updated to use `make_item_id()` for consistent naming
+
+#### Field Name Standardization
+- **Manifest Structure**: All category fields now use `category_l1`, `category_l2`, `category_l3` format
+- **Pipeline Consistency**: Fixed field access in packetize.py and aggregate.py to use correct names
+- **Backward Compatibility**: Maintained compatibility while using standardized names
+
+**Why This Matters**:
+- Enables seamless integration with both legacy and archi3D data sources
+- Provides consistent item ID generation across all data sources
+- Eliminates field naming conflicts and improves maintainability
+- Allows pipeline modules to work with unified manifest format
+- Supports proper category hierarchy tracking throughout pipeline
+
 ## [0.1.0] - 2025-01-10
 
 ### Added - Phase 1 Complete ✅

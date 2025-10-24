@@ -146,9 +146,9 @@ def run_packetize(config: Config) -> None:
             # Create packet JSON
             packet = {
                 "item_id": item_id,
-                "l1": record["l1"],
-                "l2": record["l2"],
-                "l3": record["l3"],
+                "l1": record["category_l1"],
+                "l2": record["category_l2"],
+                "l3": record["category_l3"],
                 "gt_count": packet_info["n_gt"],
                 "gt_labeled_paths": packet_info["gt_labeled_paths"],
                 "gt_labels": packet_info["gt_labels"],

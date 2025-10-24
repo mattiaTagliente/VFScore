@@ -36,6 +36,24 @@ def load_env_file(env_path: Path = Path(".env")) -> None:
                 os.environ[key] = value
 
 
+def make_item_id(product_id: str, variant: str) -> str:
+    """Create a unique item_id from product_id and variant.
+    
+    Args:
+        product_id: The product identifier
+        variant: The variant string (can be empty)
+        
+    Returns:
+        A composite identifier in the format "{product_id}_{variant}" or just "{product_id}" if variant is empty
+    """
+    if not variant or variant.strip() == "":
+        return product_id
+    else:
+        # Sanitize variant for use in filenames: lowercase and replace spaces/special chars with hyphens
+        sanitized_variant = variant.strip().lower().replace(" ", "-").replace("_", "-").replace("/", "-")
+        return f"{product_id}_{sanitized_variant}"
+
+
 # Auto-load .env on import if in project root
 if Path(".env").exists():
     load_env_file()

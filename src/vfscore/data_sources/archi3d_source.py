@@ -12,6 +12,7 @@ import csv
 from pathlib import Path
 from typing import Iterator, List, Dict, Tuple, Set
 from .base import ItemRecord
+from ..utils import make_item_id
 
 
 class Archi3DSource:
@@ -119,8 +120,8 @@ class Archi3DSource:
                 print(f"[WARNING] GLB file not found: {gen_rec['output_glb_relpath']}")
                 continue
 
-            # Create item_id (composite identifier)
-            item_id = f"{product_id}_{variant}" if variant else product_id
+            # Create item_id using utility function
+            item_id = make_item_id(product_id, variant)
 
             # Create ItemRecord
             record = ItemRecord(

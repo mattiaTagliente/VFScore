@@ -1,6 +1,6 @@
-# CLAUDE.md
+# QWEN.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Qwen Code when working with code in this repository.
 
 ## Project Overview
 
@@ -226,25 +226,18 @@ VFScore now uses a **database-driven architecture** with pluggable data sources:
   - `load_items() -> Iterator[ItemRecord]`
   - `get_source_info() -> dict`
 
-**`utils.py`** - Utility functions:
-- `make_item_id(product_id, variant) -> str`: Creates consistent item identifiers
-  - Format: `{product_id}_{variant}` if variant exists, otherwise just `{product_id}`
-  - Sanitizes variant names by converting spaces to hyphens and lowercasing
-
 **`legacy_source.py`** - Legacy database.csv support:
 - Reads generation records from `database.csv`
 - Scans reference images from `base_path/dataset/`
 - Resolves GLB paths from database relative to `base_path`
 - Supports filtering by `selected_objects_optimized.csv`
 - No manual file copying required
-- Uses `make_item_id()` for consistent item_id generation
 
 **`archi3d_source.py`** - Archi3D workspace integration:
 - Reads from `workspace/tables/items.csv` and `workspace/tables/generations.csv`
 - Workspace-relative path resolution
 - Filters by `run_id` if specified
 - Seamless Phase 6 integration
-- Uses `make_item_id()` for consistent item_id generation
 
 #### Configuration
 
@@ -271,47 +264,11 @@ data_source:
 - **Variant Support**: Properly handles product variants (e.g., "Curved backrest")
 - **Archi3D Ready**: Dual-source support for legacy and Phase 6 integration
 - **No Manual Copying**: Files read from original locations
-- **Consistent Item IDs**: Uses `make_item_id()` utility for consistent naming
 
 **Migration from old approach**:
 - Old: Filesystem scanning of `datasets/refs/` and `datasets/gens/`
 - New: Database-driven with configurable base_path
 - Result: 52/52 items found (was 7/52 with manual copying)
-
-#### Pipeline Integration (Phase 3: Pipeline Updates)
-
-All pipeline modules have been updated to read from the manifest.jsonl file instead of direct filesystem/database access:
-
-- **`ingest.py`**: Creates `manifest.jsonl` with complete metadata from data source
-- **`preprocess_gt.py`**: Reads manifest to find reference images and process them
-- **`render_cycles.py`**: Reads manifest to find GLB paths for rendering
-- **`packetize.py`**: Reads manifest to create scoring packets (note: uses `category_l1`, `category_l2`, `category_l3` fields)
-- **`aggregate.py`**: Reads manifest to enrich results with category metadata (uses `category_l1`, `category_l2`, `category_l3` fields)
-- **`report.py`**: Uses aggregated results that include enriched manifest data
-
-**Important Field Name Changes**: 
-- Manifest uses: `category_l1`, `category_l2`, `category_l3`
-- Previously referenced as: `l1`, `l2`, `l3` (now corrected in packetize.py and aggregate.py)
-
-**Manifest Structure Example**:
-```json
-{
-  "item_id": "335888_curved-backrest",
-  "product_id": "335888",
-  "variant": "Curved backrest",
-  "ref_paths": ["C:/path/to/ref1.jpg", "C:/path/to/ref2.jpg"],
-  "glb_path": "C:/path/to/model.glb",
-  "algorithm": "hunyuan3d_v2p1_single",
-  "job_id": "8a61ab22",
-  "n_refs": 2,
-  "product_name": "Chair Model X",
-  "manufacturer": "Furniture Inc.",
-  "category_l1": "Furniture",
-  "category_l2": "Seating",
-  "category_l3": "Chairs",
-  "source_type": "archi3d"
-}
-```
 
 ### 6. LLM Client Abstraction
 

@@ -667,6 +667,22 @@ data_source:
 - **Multiple Generations**: Each (product_id, variant, algorithm, job_id) is a separate record
 - **Variant Support**: Properly handles product variants (e.g., "Curved backrest")
 - **Archi3D Ready**: Seamless integration with archi3D Phase 6
+- **Consistent Item IDs**: Uses `make_item_id()` utility for consistent naming: `{product_id}_{variant}` format when variant exists, otherwise just `{product_id}`
+
+#### Pipeline Integration (Phase 3: Pipeline Updates)
+
+All pipeline modules now read from the `manifest.jsonl` file instead of direct filesystem/database access:
+
+- **`ingest.py`**: Creates `manifest.jsonl` with complete metadata from data source
+- **`preprocess_gt.py`**: Reads manifest to find reference images and process them
+- **`render_cycles.py`**: Reads manifest to find GLB paths for rendering
+- **`packetize.py`**: Reads manifest to create scoring packets
+- **`aggregate.py`**: Reads manifest to enrich results with category metadata (note: uses `category_l1`, `category_l2`, `category_l3` fields from manifest)
+- **`report.py`**: Uses aggregated results that include enriched manifest data
+
+**Important Field Name Changes**:
+- Manifest uses: `category_l1`, `category_l2`, `category_l3`
+- Previously referenced as: `l1`, `l2`, `l3` (now corrected in pipeline modules)
 
 ### Environment Variables
 
