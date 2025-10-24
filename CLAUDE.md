@@ -184,7 +184,7 @@ scoring:
 The pipeline is a **8-step sequential process** orchestrated through CLI commands:
 
 ```
-database.csv / archi3D tables → ingest → preprocess-gt → [GT images]
+data/database.csv / archi3D tables → ingest → preprocess-gt → [GT images]
   + ref images in base_path  → ────────→ render-cand  → [Candidate images]
                                               ↓
                                           package (creates scoring packets)
@@ -200,7 +200,7 @@ database.csv / archi3D tables → ingest → preprocess-gt → [GT images]
 
 **Key modules**:
 - `ingest.py`: **Database-driven** data loading using configurable data sources (LegacySource or Archi3DSource)
-  - Reads from `database.csv` (legacy) or `tables/generations.csv` (archi3D)
+  - Reads from `data/database.csv` (legacy) or `tables/generations.csv` (archi3D)
   - Resolves all paths relative to `base_path` (legacy) or `workspace` (archi3D)
   - Creates `manifest.jsonl` with complete metadata (product_id, variant, algorithm, job_id)
   - Supports multiple generations per item
@@ -235,11 +235,11 @@ VFScore now uses a **database-driven architecture** with pluggable data sources:
   - Format: `{product_id}_{variant}` if variant exists, otherwise just `{product_id}`
   - Sanitizes variant names by converting spaces to hyphens and lowercasing
 
-**`legacy_source.py`** - Legacy database.csv support:
-- Reads generation records from `database.csv`
+**`legacy_source.py`** - Legacy data/database.csv support:
+- Reads generation records from `data/database.csv`
 - Scans reference images from `base_path/dataset/`
 - Resolves GLB paths from database relative to `base_path`
-- Supports filtering by `selected_objects_optimized.csv`
+- Supports filtering by `data/selected_objects_optimized.csv`
 - No manual file copying required
 - Uses `make_item_id()` for consistent item_id generation
 
@@ -256,7 +256,7 @@ VFScore now uses a **database-driven architecture** with pluggable data sources:
 ```yaml
 data_source:
   type: legacy
-  base_path: "C:/Users/.../Testing"  # All database.csv paths relative to this
+  base_path: "C:/Users/.../Testing"  # All data/database.csv paths relative to this
   dataset_folder: dataset             # Relative to base_path
 ```
 
@@ -366,7 +366,7 @@ VFScore/
 │   ├── config.py             # Configuration management
 │   ├── data_sources/         # Data source abstraction
 │   │   ├── base.py           # ItemRecord, DataSource protocol
-│   │   ├── legacy_source.py  # Legacy database.csv support
+│   │   ├── legacy_source.py  # Legacy data/database.csv support
 │   │   └── archi3d_source.py # Archi3D workspace integration
 │   ├── llm/                  # LLM client implementations
 │   │   ├── base.py           # BaseLLMClient
@@ -385,7 +385,14 @@ VFScore/
 │   ├── test_phase1.py        # Validation framework tests
 │   ├── test_installation.py  # Installation tests
 │   └── test_legacy_source.py # Data source tests
-├── datasets/                  # Data (not in git)
+├── data/                      # Data files (CSV, JSON)
+│   ├── data/database.csv          # Generation records (legacy mode)
+│   ├── data/selected_objects_optimized.csv  # Validation study objects
+│   ├── selected_objects_for_study.csv  # Alternative object selection
+│   ├── subjective.csv        # Human evaluation scores
+│   └── VARIANT_ANALYSIS_SUMMARY.json  # Analysis artifacts
+├── scripts/                   # Utility scripts
+│   └── start_vfscore.bat     # Windows batch helper
 ├── metadata/                  # Category metadata
 ├── assets/                    # HDRI lighting
 ├── outputs/                   # Generated outputs (not in git)
@@ -407,6 +414,7 @@ VFScore/
 - `outputs/` - Generated artifacts (too large)
 - `venv/` - Virtual environment
 - `validation_study/validation_results_*/` - Validation study outputs
+- `data/` - Data files can be large, may be project-specific
 
 ### Always Commit
 - `config.yaml` - Shared default configuration
@@ -414,7 +422,8 @@ VFScore/
 - `validation_study/*.py` - Validation study scripts
 - `validation_study/*.md` - Validation study documentation
 - `tests/` - Test files
-- Documentation (README.md, GUIDE.md, CHANGELOG.md, CLAUDE.md)
+- `scripts/` - Utility scripts
+- Documentation (README.md, GUIDE.md, CHANGELOG.md, CLAUDE.md only - no other .md files)
 
 ### Virtual Environment
 **Use `venv/` (not `.venv/`)** - The project standard is `venv/` for consistency.

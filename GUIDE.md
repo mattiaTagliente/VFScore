@@ -216,10 +216,10 @@ item_id,l1,l2,l3
 ### Understanding the Pipeline
 
 #### 1. Ingest (`vfscore ingest`)
-- **Database-Driven**: Reads from configured data source (database.csv or archi3D tables)
+- **Database-Driven**: Reads from configured data source (data/database.csv or archi3D tables)
 - **Legacy Mode**:
-  - Reads generation records from `database.csv`
-  - Filters by `selected_objects_optimized.csv` (if provided)
+  - Reads generation records from `data/database.csv`
+  - Filters by `data/selected_objects_optimized.csv` (if provided)
   - Scans reference images from `base_path/dataset/`
   - Resolves GLB paths from database relative to `base_path`
 - **Archi3D Mode**:
@@ -629,13 +629,13 @@ translation:
 
 ```yaml
 data_source:
-  type: legacy  # "legacy" (database.csv) or "archi3d" (tables/generations.csv)
+  type: legacy  # "legacy" (data/database.csv) or "archi3d" (tables/generations.csv)
 
   # Legacy source (for validation study)
   base_path: null                        # Set in config.local.yaml
   dataset_folder: dataset                # Relative to base_path
-  database_csv: database.csv             # Relative to VFScore root
-  selected_objects_csv: selected_objects_optimized.csv
+  database_csv: data/database.csv             # Relative to VFScore root
+  selected_objects_csv: data/selected_objects_optimized.csv
 
   # Archi3D source (for future integration)
   # workspace: null                      # Path to archi3D workspace
@@ -648,21 +648,21 @@ data_source:
 ```yaml
 data_source:
   # Base path for all legacy data (Testing folder)
-  # All paths in database.csv are relative to this path
+  # All paths in data/database.csv are relative to this path
   base_path: "C:\\Users\\YourName\\Path\\To\\Testing"
 ```
 
 **How It Works**:
-- **Legacy Mode**: Reads from `database.csv` and resolves all file paths relative to `base_path`
+- **Legacy Mode**: Reads from `data/database.csv` and resolves all file paths relative to `base_path`
   - Reference images: `base_path/dataset/<product_id> - <variant>/images/`
-  - GLB files: `base_path/` + path from `output_glb_relpath` column in database.csv
+  - GLB files: `base_path/` + path from `output_glb_relpath` column in data/database.csv
   - No need to copy files to `datasets/refs/` or `datasets/gens/` - uses source locations directly
 - **Archi3D Mode**: Reads from archi3D workspace tables (Phase 6 integration)
   - Uses `workspace/tables/items.csv` and `workspace/tables/generations.csv`
   - All paths are workspace-relative (archi3D convention)
 
 **Why This Matters**:
-- **Database-Driven**: Single Source of Truth from database.csv
+- **Database-Driven**: Single Source of Truth from data/database.csv
 - **No Manual Copying**: Files read from original locations
 - **Multiple Generations**: Each (product_id, variant, algorithm, job_id) is a separate record
 - **Variant Support**: Properly handles product variants (e.g., "Curved backrest")

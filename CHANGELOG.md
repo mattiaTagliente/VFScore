@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed - Project Reorganization 📁
+
+**Date**: 2025-10-24
+
+#### Directory Structure Cleanup
+- **Created `data/` directory**: All data files (CSV, JSON) now organized in dedicated folder
+- **Created `scripts/` directory**: Utility scripts separated from root
+- **Removed extra documentation**: Consolidated all docs into 3 main files (README, GUIDE, CHANGELOG)
+
+#### Files Moved
+- `database.csv` → `data/database.csv`
+- `selected_objects_optimized.csv` → `data/selected_objects_optimized.csv`
+- `selected_objects_for_study.csv` → `data/selected_objects_for_study.csv`
+- `subjective.csv` → `data/subjective.csv`
+- `VARIANT_ANALYSIS_SUMMARY.json` → `data/VARIANT_ANALYSIS_SUMMARY.json`
+- `start_vfscore.bat` → `scripts/start_vfscore.bat`
+
+#### Documentation Consolidation
+- **Removed**: `CONFIGURATION_GUIDE.md`, `REORGANIZATION_SUMMARY.md`, `VALIDATION_STUDY_FIXES.md`
+- **Kept**: Only 3 core documentation files (README.md, GUIDE.md, CHANGELOG.md) plus CLAUDE.md
+- **Updated**: All configuration and usage information consolidated in GUIDE.md
+
+#### Configuration Updates
+- Updated `config.yaml`: Database paths now reference `data/` directory
+- Updated `validation_study/validation_study.py`: CSV paths updated to `data/` prefix
+- No breaking changes: All code references updated accordingly
+
+**Why**: Clean root directory following modern project best practices, easier navigation, better organization
+
+### Fixed - Item ID Validation and Windows Compatibility 🔧
+
+#### Item ID Format Consistency
+- **Fixed**: Item ID validation error for variants with spaces (e.g., "Curved backrest")
+- Updated `src/vfscore/data_sources/base.py` to use `make_item_id()` for validation
+- Ensures consistency: creation and validation use same sanitization logic
+- Result: item_id "335888_curved-backrest" now validates correctly
+
+#### Windows Terminal Compatibility
+- **Fixed**: Unicode encoding errors on Windows terminals
+- Replaced Unicode checkmarks (✓/✗) with ASCII equivalents ([OK]/[ERROR])
+- Added `Console(legacy_windows=True)` for better Windows compatibility
+- Updated `src/vfscore/__main__.py` across all commands
+
+#### Validation Study Working Directory
+- **Fixed**: Subprocess commands running from wrong directory
+- All vfscore commands now use `cwd=str(vfscore_root)` parameter
+- Ensures commands find config.local.yaml, database.csv, and other files
+- Updated all subprocess calls in `validation_study/validation_study.py`
+
 ### Added - Database Abstraction Layer 🗄️
 
 #### Core Data Source System

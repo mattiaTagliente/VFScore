@@ -25,7 +25,7 @@ from dataclasses import dataclass
 class ValidationConfig:
     """Configuration for validation study."""
     # Objects to evaluate
-    objects_csv: str = "selected_objects_optimized.csv"
+    objects_csv: str = "data/selected_objects_optimized.csv"
 
     # Parameter grid
     temperatures: List[float] = None
@@ -42,7 +42,7 @@ class ValidationConfig:
     # Paths
     project_root: Path = Path(".")
     output_dir: Path = None
-    human_scores_csv: str = "subjective.csv"
+    human_scores_csv: str = "data/subjective.csv"
 
     # Report settings
     report_title: str = "VFScore Validation Study Results"

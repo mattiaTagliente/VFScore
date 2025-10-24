@@ -7,11 +7,12 @@ from pathlib import Path
 from typing import Dict
 
 from rich.console import Console
-from rich.progress import track
+from rich.progress import Progress, SpinnerColumn, TextColumn, BarColumn, TaskProgressColumn
 
 from vfscore.config import Config
 
-console = Console()
+# Use legacy_windows for Windows compatibility
+console = Console(legacy_windows=True)
 
 def generate_blender_script(
     glb_path: Path,
@@ -194,13 +195,17 @@ def render_glb(
             timeout=300,  # 5 minute timeout
         )
 
-        # Always print Blender's output for debugging
+        # Always print Blender's output for debugging (sanitized for Windows)
         if result.stdout:
             console.print("[bold]Blender stdout:[/bold]")
-            console.print(result.stdout)
+            # Remove emojis and non-ASCII characters for Windows compatibility
+            sanitized = result.stdout.encode('ascii', errors='ignore').decode('ascii')
+            console.print(sanitized)
         if result.stderr:
             console.print("[bold]Blender stderr:[/bold]")
-            console.print(result.stderr)
+            # Remove emojis and non-ASCII characters for Windows compatibility
+            sanitized = result.stderr.encode('ascii', errors='ignore').decode('ascii')
+            console.print(sanitized)
 
         if result.returncode != 0:
             console.print(
@@ -257,27 +262,51 @@ def run_render_candidates(config: Config) -> None:
     console.print(f"Resolution: {config.render.resolution}x{config.render.resolution}")
     
     success_count = 0
-    
-    for record in track(manifest, description="Rendering candidates"):
-        item_id = record["item_id"]
-        glb_path = Path(record["glb_path"])
-        
-        output_path = config.paths.out_dir / "preprocess" / "cand" / item_id / "candidate.png"
-        output_path.parent.mkdir(parents=True, exist_ok=True)
-        
-        try:
-            success = render_glb(
-                glb_path,
-                output_path,
-                config.paths.hdri,
-                config.paths.blender_exe,
-                config
-            )
-            if success:
+    skipped_count = 0
+
+    # Use simple progress without emojis for Windows compatibility
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        console=console,
+        disable=False
+    ) as progress:
+        task = progress.add_task("Rendering candidates", total=len(manifest))
+
+        for record in manifest:
+            item_id = record["item_id"]
+            glb_path = Path(record["glb_path"])
+
+            output_path = config.paths.out_dir / "preprocess" / "cand" / item_id / "candidate.png"
+            output_path.parent.mkdir(parents=True, exist_ok=True)
+
+            # Skip if already rendered
+            if output_path.exists():
+                skipped_count += 1
                 success_count += 1
-        except Exception as e:
-            console.print(f"[red]Failed to render {item_id}: {e}[/red]")
+                progress.advance(task)
+                continue
+
+            try:
+                success = render_glb(
+                    glb_path,
+                    output_path,
+                    config.paths.hdri,
+                    config.paths.blender_exe,
+                    config
+                )
+                if success:
+                    success_count += 1
+            except Exception as e:
+                # Sanitize error message for Windows compatibility
+                error_msg = str(e).encode('ascii', errors='ignore').decode('ascii')
+                console.print(f"[red]Failed to render {item_id}: {error_msg}[/red]")
+
+            progress.advance(task)
     
+    if skipped_count > 0:
+        console.print(f"[yellow]Skipped {skipped_count} already-rendered objects[/yellow]")
     console.print(f"[green]Successfully rendered {success_count}/{len(manifest)} objects[/green]")
 
 

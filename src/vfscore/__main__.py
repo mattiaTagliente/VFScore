@@ -32,6 +32,11 @@ app = typer.Typer(
 console = Console(legacy_windows=True)
 
 
+def sanitize_error(e: Exception) -> str:
+    """Sanitize exception message for Windows compatibility (remove emojis)."""
+    return str(e).encode('ascii', errors='ignore').decode('ascii')
+
+
 def version_callback(value: bool) -> None:
     """Print version and exit."""
     if value:
@@ -78,7 +83,7 @@ def ingest(
         manifest_path = run_ingest(config)
         console.print(f"[green][OK][/green] Manifest created: {manifest_path}")
     except Exception as e:
-        console.print(f"[red][ERROR][/red] Ingestion failed: {e}")
+        console.print(f"[red][ERROR][/red] Ingestion failed: {sanitize_error(e)}")
         raise typer.Exit(code=1)
 
 
@@ -104,7 +109,7 @@ def preprocess_gt(
         run_preprocess_gt(config)
         console.print("[green][OK][/green] Ground truth images preprocessed")
     except Exception as e:
-        console.print(f"[red][ERROR][/red] GT preprocessing failed: {e}")
+        console.print(f"[red][ERROR][/red] GT preprocessing failed: {sanitize_error(e)}")
         raise typer.Exit(code=1)
 
 
@@ -135,7 +140,7 @@ def render_cand(
         run_render_candidates(config)
         console.print("[green][OK][/green] Candidates rendered")
     except Exception as e:
-        console.print(f"[red][ERROR][/red] Rendering failed: {e}")
+        console.print(f"[red][ERROR][/red] Rendering failed: {sanitize_error(e)}")
         raise typer.Exit(code=1)
 
 
@@ -164,7 +169,7 @@ def package(
         run_packetize(config)
         console.print("[green][OK][/green] Scoring packets created")
     except Exception as e:
-        console.print(f"[red][ERROR][/red] Packaging failed: {e}")
+        console.print(f"[red][ERROR][/red] Packaging failed: {sanitize_error(e)}")
         raise typer.Exit(code=1)
 
 
@@ -202,7 +207,7 @@ def score(
         )
         console.print(f"[green][OK][/green] Scoring complete using {model}")
     except Exception as e:
-        console.print(f"[red][ERROR][/red] Scoring failed: {e}")
+        console.print(f"[red][ERROR][/red] Scoring failed: {sanitize_error(e)}")
         raise typer.Exit(code=1)
 
 
@@ -241,7 +246,7 @@ def aggregate(
         )
         console.print("[green][OK][/green] Scores aggregated")
     except Exception as e:
-        console.print(f"[red][ERROR][/red] Aggregation failed: {e}")
+        console.print(f"[red][ERROR][/red] Aggregation failed: {sanitize_error(e)}")
         raise typer.Exit(code=1)
 
 
@@ -277,7 +282,7 @@ def translate(
         run_translation(config, model=model, force=force)
         console.print(f"[green][OK][/green] Translation complete using {model}")
     except Exception as e:
-        console.print(f"[red][ERROR][/red] Translation failed: {e}")
+        console.print(f"[red][ERROR][/red] Translation failed: {sanitize_error(e)}")
         raise typer.Exit(code=1)
 
 
@@ -304,7 +309,7 @@ def report(
         report_path = run_report(config)
         console.print(f"[green][OK][/green] Report generated: {report_path}")
     except Exception as e:
-        console.print(f"[red][ERROR][/red] Report generation failed: {e}")
+        console.print(f"[red][ERROR][/red] Report generation failed: {sanitize_error(e)}")
         raise typer.Exit(code=1)
 
 

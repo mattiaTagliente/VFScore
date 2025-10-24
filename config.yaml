@@ -52,13 +52,13 @@ translation:
   cache_translations: true  # Cache translations to avoid re-translating
 
 data_source:
-  type: legacy  # "legacy" (database.csv) or "archi3d" (tables/generations.csv)
+  type: legacy  # "legacy" (data/database.csv) or "archi3d" (tables/generations.csv)
 
   # Legacy source options (for validation study)
   base_path: null  # Set in config.local.yaml (e.g., "C:/Users/.../Testing")
   dataset_folder: dataset  # Relative to base_path (folder with reference images)
-  database_csv: database.csv  # Relative to VFScore root
-  selected_objects_csv: selected_objects_optimized.csv  # Relative to VFScore root
+  database_csv: data/database.csv  # Relative to VFScore root
+  selected_objects_csv: data/selected_objects_optimized.csv  # Relative to VFScore root
 
   # Archi3D source options (for future integration)
   # workspace: null  # Path to archi3D workspace (e.g., path to Testing/)

@@ -9,11 +9,12 @@ import numpy as np
 from PIL import Image, ImageDraw, ImageFont
 from rembg import remove
 from rich.console import Console
-from rich.progress import track
+from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn
 
 from vfscore.config import Config
 
-console = Console()
+# Use legacy_windows for Windows compatibility
+console = Console(legacy_windows=True)
 
 
 def load_manifest(manifest_path: Path) -> list:
@@ -183,26 +184,49 @@ def run_preprocess_gt(config: Config) -> None:
     total_images = sum(record["n_refs"] for record in manifest)
     
     processed = 0
-    for record in track(manifest, description="Preprocessing GT images"):
-        item_id = record["item_id"]
-        ref_paths = [Path(p) for p in record["ref_paths"]]
-        
-        for idx, ref_path in enumerate(ref_paths, start=1):
-            output_path = (
-                config.paths.out_dir / "preprocess" / "refs" / item_id / f"gt_{idx}.png"
-            )
-            
-            try:
-                preprocess_gt_image(
-                    ref_path,
-                    output_path,
-                    f"GT #{idx}",
-                    config,
+    skipped = 0
+
+    # Use simple progress without emojis for Windows compatibility
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        console=console,
+        disable=False
+    ) as progress:
+        task = progress.add_task("Preprocessing GT images", total=total_images)
+
+        for record in manifest:
+            item_id = record["item_id"]
+            ref_paths = [Path(p) for p in record["ref_paths"]]
+
+            for idx, ref_path in enumerate(ref_paths, start=1):
+                output_path = (
+                    config.paths.out_dir / "preprocess" / "refs" / item_id / f"gt_{idx}.png"
                 )
-                processed += 1
-            except Exception as e:
-                console.print(f"[red]Error processing {ref_path}: {e}[/red]")
-    
+
+                # Skip if already processed
+                if output_path.exists():
+                    skipped += 1
+                    processed += 1
+                    progress.advance(task)
+                    continue
+
+                try:
+                    preprocess_gt_image(
+                        ref_path,
+                        output_path,
+                        f"GT #{idx}",
+                        config,
+                    )
+                    processed += 1
+                except Exception as e:
+                    console.print(f"[red]Error processing {ref_path}: {e}[/red]")
+
+                progress.advance(task)
+
+    if skipped > 0:
+        console.print(f"[yellow]Skipped {skipped} already-processed images[/yellow]")
     console.print(f"[green]Processed {processed}/{total_images} images[/green]")
 
 
