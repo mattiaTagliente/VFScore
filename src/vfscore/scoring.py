@@ -135,6 +135,63 @@ def is_item_already_scored(output_dir: Path, repeats: int) -> bool:
     return True
 
 
+def count_existing_repeats_with_parameters(
+    item_dir: Path,
+    temperature: float,
+    top_p: float,
+    tolerance: float = 0.001
+) -> int:
+    """Count existing repeats for an item with matching temperature/top_p parameters.
+
+    This function looks across ALL batch directories for the item and counts
+    how many repeats exist with matching parameters (within tolerance).
+
+    Args:
+        item_dir: Item directory (e.g., outputs/llm_calls/gemini/558736)
+        temperature: Target temperature
+        top_p: Target top_p
+        tolerance: Tolerance for float comparison
+
+    Returns:
+        Number of existing repeats with matching parameters
+    """
+    if not item_dir.exists():
+        return 0
+
+    total_repeats = 0
+
+    # Iterate through all batch directories
+    for batch_dir in item_dir.iterdir():
+        if not batch_dir.is_dir() or not batch_dir.name.startswith("batch_"):
+            continue
+
+        # Read batch metadata
+        batch_info_path = batch_dir / "batch_info.json"
+        if not batch_info_path.exists():
+            continue
+
+        try:
+            with open(batch_info_path, "r", encoding="utf-8") as f:
+                batch_info = json.load(f)
+
+            # Check if temperature and top_p match (within tolerance)
+            batch_temp = batch_info.get("temperature", None)
+            batch_top_p = batch_info.get("top_p", None)
+
+            if batch_temp is None or batch_top_p is None:
+                continue
+
+            if abs(batch_temp - temperature) < tolerance and abs(batch_top_p - top_p) < tolerance:
+                # Count rep_*.json files in this batch
+                rep_files = list(batch_dir.glob("rep_*.json"))
+                total_repeats += len(rep_files)
+
+        except Exception:
+            continue
+
+    return total_repeats
+
+
 def resolve_api_keys(config: Config) -> List[str]:
     """Resolve API keys from config (supports environment variables)."""
     if not config.scoring.api_keys:
@@ -440,17 +497,25 @@ async def run_scoring_async(
             # Build output directory path
             if config.scoring.use_batch_mode:
                 output_dir = base_llm_calls_dir / model_dir_name / item_id / batch_dir_name
+                item_dir = base_llm_calls_dir / model_dir_name / item_id
             else:
                 output_dir = base_llm_calls_dir / model_dir_name / item_id
+                item_dir = output_dir
 
-            # Check if already scored
-            if is_item_already_scored(output_dir, repeats):
+            # Smart skip: Check across all batches for matching parameters
+            existing_repeats = count_existing_repeats_with_parameters(
+                item_dir, actual_temperature, actual_top_p
+            )
+
+            if existing_repeats >= repeats:
                 skipped_items += 1
                 success_items += 1
                 total_calls += repeats
-                console.print(f"[dim]  {item_id}: [yellow]skipped[/yellow] (already scored)[/dim]")
+                console.print(f"[dim]  {item_id}: [yellow]skipped[/yellow] (already have {existing_repeats}/{repeats} repeats with temp={actual_temperature}, top_p={actual_top_p})[/dim]")
                 progress.advance(task)
                 continue
+            elif existing_repeats > 0:
+                console.print(f"[dim]  {item_id}: Found {existing_repeats}/{repeats} existing repeats, running {repeats - existing_repeats} more...[/dim]")
 
             output_dir.mkdir(parents=True, exist_ok=True)
 

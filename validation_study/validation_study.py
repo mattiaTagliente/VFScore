@@ -220,46 +220,62 @@ class ValidationStudy:
         # Run parameter sweep
         total_runs = 0
         failed_runs = 0
+        interrupted = False
 
-        for idx, (temp, top_p) in enumerate(self.parameter_settings):
-            setting_label = "BASELINE" if temp == self.config.baseline_temp else f"TEST_{idx}"
-            print(f"\n{'=' * 80}")
-            print(f"[{idx+1}/{len(self.parameter_settings)}] Running {setting_label}: temp={temp}, top_p={top_p}")
-            print(f"{'=' * 80}")
+        try:
+            for idx, (temp, top_p) in enumerate(self.parameter_settings):
+                setting_label = "BASELINE" if temp == self.config.baseline_temp else f"TEST_{idx}"
+                print(f"\n{'=' * 80}")
+                print(f"[{idx+1}/{len(self.parameter_settings)}] Running {setting_label}: temp={temp}, top_p={top_p}")
+                print(f"{'=' * 80}")
 
-            for obj in objects:
-                # Extract item ID from CSV
-                item_id = obj.get('product_id', obj.get('3D Object filename', 'unknown').split('__')[0])
-                print(f"\n  Scoring item {item_id} ({self.config.n_repeats} repeats)...")
+                for obj in objects:
+                    # Extract item ID from CSV
+                    item_id = obj.get('product_id', obj.get('3D Object filename', 'unknown').split('__')[0])
+                    print(f"\n  Scoring item {item_id} ({self.config.n_repeats} repeats)...")
 
-                try:
-                    # Build vfscore score command
-                    cmd = [
-                        "vfscore", "score",
-                        "--model", self.config.llm_model,
-                        "--repeats", str(self.config.n_repeats),
-                        "--temperature", str(temp),
-                        "--top-p", str(top_p),
-                    ]
+                    try:
+                        # Build vfscore score command
+                        cmd = [
+                            "vfscore", "score",
+                            "--model", self.config.llm_model,
+                            "--repeats", str(self.config.n_repeats),
+                            "--temperature", str(temp),
+                            "--top-p", str(top_p),
+                        ]
 
-                    # Run scoring from project root
-                    result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(vfscore_root))
+                        # Run scoring from project root
+                        result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(vfscore_root))
 
-                    if result.returncode == 0:
-                        print(f"    [OK] Successfully scored {item_id}")
-                        total_runs += 1
-                    else:
-                        print(f"    [ERROR] Failed to score {item_id}")
-                        if result.stderr:
-                            print(f"    Error: {result.stderr[:200]}")
+                        if result.returncode == 0:
+                            print(f"    [OK] Successfully scored {item_id}")
+                            total_runs += 1
+                        else:
+                            print(f"    [ERROR] Failed to score {item_id}")
+                            if result.stderr:
+                                print(f"    Error: {result.stderr[:200]}")
+                            failed_runs += 1
+
+                    except KeyboardInterrupt:
+                        print(f"\n[!] Keyboard interrupt detected. Gracefully stopping...")
+                        interrupted = True
+                        break
+                    except Exception as e:
+                        print(f"    [ERROR] Exception scoring {item_id}: {e}")
                         failed_runs += 1
 
-                except Exception as e:
-                    print(f"    [ERROR] Exception scoring {item_id}: {e}")
-                    failed_runs += 1
+                if interrupted:
+                    break
+
+        except KeyboardInterrupt:
+            print(f"\n[!] Keyboard interrupt detected. Gracefully stopping...")
+            interrupted = True
 
         print(f"\n{'=' * 80}")
-        print("VALIDATION STUDY COMPLETE - SCORING PHASE")
+        if interrupted:
+            print("VALIDATION STUDY INTERRUPTED - PARTIAL RESULTS")
+        else:
+            print("VALIDATION STUDY COMPLETE - SCORING PHASE")
         print(f"{'=' * 80}")
         print(f"Total runs: {total_runs}")
         print(f"Failed runs: {failed_runs}")
@@ -268,8 +284,13 @@ class ValidationStudy:
         print(f"\nResults saved to batch directories in: outputs/llm_calls/")
         print(f"Study metadata saved to: {self.config.output_dir}")
 
-        # If scoring succeeded, continue with aggregation and reporting
-        if total_runs > 0:
+        if interrupted:
+            print(f"\n[!] Study was interrupted by user.")
+            print(f"[!] Partial results have been saved.")
+            print(f"[!] You can resume by running the study again - completed items will be skipped.")
+
+        # If scoring succeeded and not interrupted, continue with aggregation and reporting
+        if total_runs > 0 and not interrupted:
             print(f"\n{'=' * 80}")
             print("PHASE 2: AGGREGATION")
             print(f"{'=' * 80}")
