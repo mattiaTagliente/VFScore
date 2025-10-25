@@ -1,6 +1,8 @@
-# Cost Protection Guide
+# Cost Protection Guide (Headless Mode)
 
 **CRITICAL**: Read this guide before running `vfscore score` to avoid unexpected charges.
+
+**UPDATE**: VFScore now operates in **headless mode** (no interactive prompts) for archi3D integration and automated workflows.
 
 ## The Problem
 
@@ -18,18 +20,18 @@ A user received an unexpected €12.77 bill from Google after running the scorin
 
 ---
 
-## Cost Protection System
+## Cost Protection System (Headless Mode)
 
-VFScore now includes **6 layers of protection** to prevent unexpected charges:
+VFScore now includes **7 layers of protection** to prevent unexpected charges **WITHOUT any interactive prompts**:
 
-### Layer 1: Pre-Flight Billing Warning ⚠️
+### Layer 1: Pre-Flight Billing Warning ⚠️ (Non-Interactive)
 
 **When**: Before ANY API calls
-**What**: Explicit warning about billing tiers
-**Action**: User must confirm API key is on FREE TIER
+**What**: Informational warning about billing tiers
+**Action**: Displays info, then continues automatically (no prompt)
 
 ```
-⚠  BILLING WARNING ⚠
+⚠  BILLING INFORMATION ⚠
 ================================================================================
 
 The Gemini API has two modes:
@@ -39,15 +41,20 @@ The Gemini API has two modes:
 CRITICAL: If you have billing enabled in Google Cloud,
 you WILL be charged for API calls!
 
-Do you confirm your API key is on FREE TIER (billing disabled)? [y/N]:
+VFScore cannot detect billing status programmatically.
+Cost tracking and limits are enabled (see config).
+
+[Continues automatically - no prompt]
 ```
 
-**If uncertain**: Answer `N` and check your billing settings first!
+**Control**: Set `display_billing_warning: false` in config to skip
 
-### Layer 2: Cost Estimation 💰
+### Layer 2: Cost Estimation 💰 (Non-Interactive)
 
 **When**: After billing warning, before execution
 **What**: Detailed cost breakdown
+**Action**: Displays estimate, then proceeds automatically (no prompt)
+
 **Shows**:
 - Number of API calls
 - Tokens per call
@@ -74,19 +81,37 @@ TOTAL COST (USD)        | $2.14
 TOTAL COST (EUR)        | €1.97
 
 ⚠ This will incur charges if billing is enabled!
+Cost limit: $20.00 (from config)
+
+[Continues automatically - no prompt]
 ```
 
-### Layer 3: Pre-Execution Approval ✅
+**Control**: Set `display_cost_estimate: false` in config to skip
 
-**When**: After seeing cost estimate
-**What**: User must explicitly approve
-**Action**: Type `y` to proceed, `N` to cancel
+### Layer 3: Configuration-Based Cost Limit 🛡️ (NEW - Headless)
+
+**When**: Before execution starts
+**What**: Automatic cost limit check
+**Action**: Auto-aborts if estimated cost > `max_cost_usd`
+
+```yaml
+# config.local.yaml
+scoring:
+  max_cost_usd: 20.0  # Maximum $20 per run (auto-abort if exceeded)
+  # null = no limit (not recommended for production)
+```
+
+**Behavior**:
+- If estimate <= limit: Proceeds automatically
+- If estimate > limit: **Aborts immediately** (no prompt)
 
 ```
-Do you want to proceed with this scoring run? [y/N]:
-```
+❌ COST LIMIT EXCEEDED
+Estimated cost ($25.00) exceeds limit ($20.00)
+Execution aborted to prevent charges.
 
-**If you see a high cost**: Answer `N` and verify your billing settings!
+Update config.local.yaml to increase limit if needed.
+```
 
 ### Layer 4: Real-Time Cost Tracking 📊
 
@@ -101,19 +126,21 @@ Scoring 558736 (1/52) ━━━━━━━━━━━━ 15% 0:25:00
 
 You can see costs accumulating in real-time.
 
-### Layer 5: Threshold Alerts 🚨
+### Layer 5: Threshold Alerts 🚨 (Informational Only)
 
 **When**: Cost exceeds $1, $5, $10, or $20
-**What**: Automatic alert + confirmation required
+**What**: Automatic informational alert
+**Action**: Displays warning, continues automatically (no prompt)
 
 ```
-⚠  COST THRESHOLD ALERT ⚠
+ℹ  COST THRESHOLD ALERT
 Current cost: $1.02 USD (exceeded $1.00)
+Remaining before limit: $18.98
 
-Do you want to continue? (Current: $1.02) [y/N]:
+[Continues automatically - no prompt]
 ```
 
-**You can abort at any time** to prevent further charges!
+**Auto-stop**: If `max_cost_usd` is set and actual cost reaches limit, execution stops automatically (no prompt required)
 
 ### Layer 6: Final Cost Summary 📝
 
@@ -298,7 +325,7 @@ A: No. Google doesn't provide an API to check tier status. That's why we have mu
 A: This means you're likely on FREE TIER or VFScore couldn't estimate costs. Proceed with caution and monitor the running cost display.
 
 **Q: Can I disable cost protection?**
-A: No. Cost protection is mandatory to prevent accidental charges. All confirmations are required.
+A: You can disable warnings/estimates but not the hard limit. Set `max_cost_usd: null` to remove limit (not recommended). Set `display_billing_warning: false` and `display_cost_estimate: false` to hide informational displays.
 
 **Q: What if I accidentally started a large scoring run?**
 A: Press `Ctrl+C` immediately to stop execution. Cost tracker will save logs for the calls that completed. Check threshold alerts - they give you chances to abort.
@@ -307,19 +334,27 @@ A: Press `Ctrl+C` immediately to stop execution. Cost tracker will save logs for
 
 ## Summary
 
-**VFScore now has comprehensive cost protection**:
+**VFScore now has comprehensive cost protection (Headless Mode)**:
 
-1. ⚠️ **Billing warning** before any calls
-2. 💰 **Cost estimation** before execution
-3. ✅ **User approval** required
+1. ⚠️ **Billing warning** before any calls (informational, no prompt)
+2. 💰 **Cost estimation** before execution (informational, no prompt)
+3. 🛡️ **Configuration-based limit** (auto-abort if exceeded)
 4. 📊 **Real-time tracking** during execution
-5. 🚨 **Threshold alerts** at $1, $5, $10, $20
-6. 📝 **Final summary** with permanent logs
+5. 🚨 **Threshold alerts** at $1, $5, $10, $20 (informational, no prompt)
+6. 🛑 **Automatic stop** when max_cost_usd reached
+7. 📝 **Final summary** with permanent logs
+
+**Headless Mode Benefits**:
+- ✅ **No interactive prompts** - suitable for archi3D integration
+- ✅ **Automated workflows** - can run in scheduled jobs
+- ✅ **Config-based safety** - set limits once, run safely
+- ✅ **Real-time monitoring** - see costs as they accumulate
+- ✅ **Automatic abort** - stops at configured limit
 
 **You are protected from unexpected charges** - but you must:
-- Verify your billing status
-- Read the warnings carefully
-- Monitor costs during execution
-- Abort if costs are higher than expected
+- Verify your billing status (https://aistudio.google.com/)
+- Set appropriate `max_cost_usd` in config.local.yaml
+- Review cost estimates before large runs
+- Check cost logs after execution
 
 **Stay safe!** 🛡️

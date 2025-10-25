@@ -317,7 +317,230 @@ All pipeline modules have been updated to read from the manifest.jsonl file inst
 }
 ```
 
-### 6. LLM Client Abstraction
+### 6. Headless Cost Protection System (NEW)
+
+**Critical**: After a user received an unexpected €12.77 bill, VFScore now includes comprehensive cost protection suitable for **headless/automated operation** (archi3D integration).
+
+**Module**: `src/vfscore/llm/cost_tracker.py`
+
+**Problem**: Google Gemini API automatically charges if billing is enabled, with NO programmatic way to detect tier status before making calls.
+
+**Solution**: Multi-layer protection system with **zero interactive prompts**:
+
+#### 7 Layers of Protection
+
+1. **Pre-Flight Billing Warning** (Non-Interactive):
+   - Displays billing tier information before any API calls
+   - Informational only - no user prompt
+   - Configurable: `display_billing_warning: false` to skip
+
+2. **Cost Estimation** (Non-Interactive):
+   - Calculates token counts (images + messages + responses)
+   - Estimates cost based on Gemini 2.5 Pro pricing:
+     - Input: $1.25 per 1M tokens
+     - Output: $10.00 per 1M tokens
+   - Shows USD and EUR estimates
+   - Configurable: `display_cost_estimate: false` to skip
+
+3. **Configuration-Based Cost Limit** (NEW - Auto-Abort):
+   - Set `max_cost_usd` in config
+   - **Automatically aborts** if estimated cost exceeds limit
+   - No user prompt - immediate stop
+   - Example: `max_cost_usd: 20.0` (max $20 per run)
+
+4. **Real-Time Cost Tracking**:
+   - Records every API call with timestamp
+   - Tracks cumulative costs during execution
+   - Displays running cost after each item
+
+5. **Threshold Alerts** (Informational Only):
+   - Automatic alerts at $1, $5, $10, $20
+   - Shows remaining budget if limit set
+   - No prompts - continues automatically
+   - **Auto-stops when max_cost_usd reached**
+
+6. **Automatic Stop**:
+   - Monitors actual costs during execution
+   - Stops immediately when `max_cost_usd` reached
+   - No user confirmation required
+
+7. **Final Cost Summary**:
+   - Complete cost breakdown at end
+   - Per-call and total costs
+   - Token counts and model info
+   - Saves permanent log to `outputs/llm_calls/cost_tracker.json`
+
+#### Key Functions
+
+**`CostEstimator`** class:
+```python
+def estimate_cost(num_items: int, repeats: int, model: str) -> dict:
+    # Estimates tokens and costs before execution
+    # Returns breakdown dict with USD/EUR costs
+```
+
+**`CostTracker`** class:
+```python
+def record_call(item_id: str, input_tokens: int, output_tokens: int):
+    # Records actual API call costs
+    # Updates cumulative totals
+
+def check_threshold(max_cost_usd: float | None) -> bool:
+    # Returns False if max exceeded (auto-stop)
+    # Returns True to continue
+```
+
+**Integration in `scoring.py`**:
+```python
+def run_scoring(config, model, repeats, temperature, top_p):
+    # Step 1: Display billing warning (optional, no prompt)
+    if config.scoring.display_billing_warning:
+        display_billing_warning()
+
+    # Step 2: Estimate and check limit (auto-abort if exceeded)
+    if config.scoring.display_cost_estimate:
+        if not display_cost_estimate(..., max_cost_usd=config.scoring.max_cost_usd):
+            return  # AUTO-ABORT
+
+    # Step 3: Execute with tracking (auto-stop at limit)
+    # Real-time cost monitoring
+```
+
+#### Configuration
+
+```yaml
+# config.local.yaml
+scoring:
+  # Cost protection (headless)
+  max_cost_usd: 20.0  # Maximum $20 per run (auto-abort)
+  # null = no limit (not recommended)
+  display_billing_warning: true
+  display_cost_estimate: true
+```
+
+**Why this matters**: Prevents unexpected charges while enabling fully automated execution for archi3D integration. No interactive prompts ever block execution.
+
+### 7. Multi-Key Async Scoring System (NEW)
+
+**Critical**: VFScore now supports **team collaboration** with multiple API keys for dramatically faster scoring (5x speedup with 5 keys).
+
+**Modules**:
+- `src/vfscore/llm/key_pool.py` (410 lines): Multi-key orchestration
+- `src/vfscore/llm/gemini_async.py` (250 lines): Async Gemini client
+
+**Performance Scaling**:
+- **1 key**: 5 RPM, 100 RPD (baseline)
+- **5 keys**: 25 RPM, 500 RPD (5x faster!)
+- **N keys**: Nx speedup, 100N requests/day
+
+#### Architecture
+
+**`GeminiKeyPool`** class:
+- Round-robin key selection with quota awareness
+- Per-key tracking: RPM (5), TPM (125K), RPD (100)
+- Sliding window rate limiting (60-second windows)
+- Daily quota reset at midnight PT
+- 80% daily quota warnings
+- Statistics export to `outputs/llm_calls/key_pool_stats.json`
+
+**`KeyQuotaTracker`** class:
+```python
+class KeyQuotaTracker:
+    def __init__(self, key_id: str, rpm_limit: int = 5,
+                 tpm_limit: int = 125000, rpd_limit: int = 100):
+        self.request_timestamps = deque(maxlen=rpm_limit)
+        self.token_usage = deque()
+        self.requests_today = 0
+        self.last_reset_date = self._get_current_date_pt()
+
+    def can_make_request(self, estimated_tokens: int = 5000) -> Tuple[bool, Optional[str]]:
+        # Checks RPM, TPM, RPD limits
+        # Returns (True, None) if can proceed, (False, reason) if blocked
+```
+
+**`AsyncGeminiClient`** class:
+```python
+class AsyncGeminiClient(BaseLLMClient):
+    def __init__(self, model_name: str, temperature: float, top_p: float,
+                 run_id: str, key_pool: Optional[GeminiKeyPool] = None):
+        # Supports both single-key and multi-key modes
+
+    async def score_visual_fidelity_async(self, image_paths, context, rubric_weights):
+        # Async scoring with automatic key selection from pool
+        # Rate limiting handled by key_pool.get_available_key()
+```
+
+#### Configuration
+
+```yaml
+# config.local.yaml
+scoring:
+  use_async: true
+
+  # Team API keys (from .env) - 5 total keys
+  api_keys:
+    - $GEMINI_API_KEY_USER1  # Mattia
+    - $GEMINI_API_KEY_USER2  # Team member 2
+    - $GEMINI_API_KEY_USER3  # Team member 3
+    - $GEMINI_API_KEY_USER4  # Team member 4
+    - $GEMINI_API_KEY_USER5  # Team member 5
+
+  # Human-readable labels for logging
+  key_labels:
+    - mattia
+    - user2
+    - user3
+    - user4
+    - user5
+
+  # Free tier limits per key
+  rpm_limit: 5       # Requests per minute per key
+  tpm_limit: 125000  # Tokens per minute per key
+  rpd_limit: 100     # Requests per day per key
+```
+
+```bash
+# .env
+GEMINI_API_KEY_USER1=AIza...key1
+GEMINI_API_KEY_USER2=AIza...key2
+GEMINI_API_KEY_USER3=AIza...key3
+GEMINI_API_KEY_USER4=AIza...key4
+GEMINI_API_KEY_USER5=AIza...key5
+```
+
+#### Integration in `scoring.py`
+
+```python
+async def run_scoring_async(config, model, repeats, ..., cost_tracker):
+    # Create key pool from config
+    key_pool = GeminiKeyPool(
+        api_keys=config.scoring.api_keys,
+        key_labels=config.scoring.key_labels,
+        rpm_limit=config.scoring.rpm_limit,
+        tpm_limit=config.scoring.tpm_limit,
+        rpd_limit=config.scoring.rpd_limit
+    )
+
+    # Create async client with pool
+    client = AsyncGeminiClient(model, temp, top_p, run_id, key_pool=key_pool)
+
+    # Concurrent scoring with automatic quota management
+    async for batch_result in score_items_concurrently(client, items):
+        # Cost tracking
+        cost_tracker.record_call(...)
+
+        # Check if limit exceeded (auto-stop)
+        if not check_cost_threshold(cost_tracker, max_cost_usd):
+            break
+```
+
+**Why this matters**:
+- Team collaboration: Multiple researchers can contribute API keys
+- 5x speedup: Complete studies in hours instead of days
+- Compliant: Legitimate collaborative research (Google ToS compliant)
+- Safe: Per-key quota tracking prevents overruns
+
+### 8. LLM Client Abstraction
 
 **Base class**: `src/vfscore/llm/base.py:BaseLLMClient`
 - Abstract interface for LLM vision clients
@@ -335,7 +558,7 @@ All pipeline modules have been updated to read from the manifest.jsonl file inst
 3. Update `scoring.py:get_llm_client()` to support new model
 4. Add model to `config.yaml:scoring.models` list
 
-### 6. Scoring Rubric
+### 9. Scoring Rubric
 
 Visual fidelity is scored across **4 weighted dimensions**:
 

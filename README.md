@@ -23,11 +23,13 @@ VFScore provides an end-to-end system to:
 
 - ⚡ **Automated Pipeline**: 8-step workflow from raw data to final report
 - 🌍 **Bilingual Reports**: Interactive English/Italian reports with one-click language switching
+- 🛡️ **Cost Protection**: Headless cost tracking with automatic limits (archi3D-compatible)
+- 🚀 **Multi-Key Async**: Team collaboration with 5x speedup (5 API keys = 25 RPM, 500 RPD)
 - 🔬 **Validation Studies**: Parameter sweep support with complete metadata tracking
 - 🔄 **Batch System**: Multi-user collaboration without overwriting results
 - 🎯 **Confidence Metrics**: Statistical validation with MAD-based confidence scores
 - 🔧 **Configurable**: Flexible YAML configuration with machine-specific overrides
-- 🚀 **Production Ready**: Error handling, rate limiting, progress tracking
+- ⚙️ **Production Ready**: Headless operation, error handling, rate limiting, progress tracking
 
 ---
 
@@ -71,6 +73,7 @@ Open `outputs/report/index.html` in your browser. Toggle between English and Ita
 ## 📖 Documentation
 
 - **[Complete Guide](GUIDE.md)** - Installation, usage, configuration, development
+- **[Cost Protection Guide](COST_PROTECTION_GUIDE.md)** - Headless cost protection system
 - **[Changelog](CHANGELOG.md)** - Version history and updates
 - **[Claude Instructions](CLAUDE.md)** - Project-specific instructions for Claude Code
 
@@ -188,6 +191,83 @@ translation:
   model: gemini-2.5-flash
   cache_translations: true
 ```
+
+---
+
+## 🛡️ Cost Protection (Headless Mode)
+
+VFScore includes **7 layers of cost protection** to prevent unexpected API charges:
+
+1. **Pre-flight billing warning** (informational, no prompt)
+2. **Cost estimation** before execution (USD and EUR)
+3. **Configuration-based limit** (auto-abort if exceeded)
+4. **Real-time cost tracking** during execution
+5. **Threshold alerts** at $1, $5, $10, $20 (informational)
+6. **Automatic stop** when `max_cost_usd` reached
+7. **Final cost summary** with detailed logs
+
+**Headless Operation**: No interactive prompts - suitable for archi3D integration and automated workflows.
+
+**Example Configuration:**
+
+```yaml
+# config.local.yaml
+scoring:
+  max_cost_usd: 20.0  # Maximum $20 per run (auto-abort if exceeded)
+  display_billing_warning: true
+  display_cost_estimate: true
+```
+
+**CRITICAL**: Check your billing status at https://aistudio.google.com/ to avoid unexpected charges. See **[Cost Protection Guide](COST_PROTECTION_GUIDE.md)** for complete details.
+
+---
+
+## 🚀 Multi-Key Async Scoring
+
+VFScore supports **team collaboration** with multiple API keys for dramatically faster scoring:
+
+**Performance Scaling:**
+- **1 key**: 5 RPM, 100 RPD (baseline)
+- **5 keys**: 25 RPM, 500 RPD (5x faster!)
+- **N keys**: Nx speedup, 100N requests/day
+
+**Setup:**
+
+```yaml
+# config.local.yaml
+scoring:
+  use_async: true
+  api_keys:
+    - $GEMINI_API_KEY_USER1  # Your key
+    - $GEMINI_API_KEY_USER2  # Team member 2
+    - $GEMINI_API_KEY_USER3  # Team member 3
+    - $GEMINI_API_KEY_USER4  # Team member 4
+    - $GEMINI_API_KEY_USER5  # Team member 5
+  key_labels:
+    - mattia
+    - user2
+    - user3
+    - user4
+    - user5
+  rpm_limit: 5       # Per-key limit
+  tpm_limit: 125000  # Per-key limit
+  rpd_limit: 100     # Per-key limit
+```
+
+```bash
+# .env
+GEMINI_API_KEY_USER1=your_key_here
+GEMINI_API_KEY_USER2=colleague_key_here
+# ... etc
+```
+
+**Features:**
+- Intelligent round-robin key selection
+- Per-key quota tracking (RPM, TPM, RPD)
+- Automatic quota warnings at 80% daily usage
+- Statistics export to `outputs/llm_calls/key_pool_stats.json`
+
+**Compliance**: Fully compliant with Google ToS - designed for legitimate collaborative research teams.
 
 ---
 
