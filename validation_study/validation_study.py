@@ -186,6 +186,7 @@ class ValidationStudy:
             if result.returncode != 0:
                 print(f"[ERROR] Ingest failed: {result.stderr[:500]}")
                 return costs
+            print("     [OK] Complete")
 
             # Run preprocess-gt
             print("[2/4] Running preprocess-gt...")
@@ -193,6 +194,7 @@ class ValidationStudy:
             if result.returncode != 0:
                 print(f"[ERROR] Preprocess failed: {result.stderr[:500]}")
                 return costs
+            print("     [OK] Complete")
 
             # Run render-cand
             print("[3/4] Running render-cand...")
@@ -200,6 +202,7 @@ class ValidationStudy:
             if result.returncode != 0:
                 print(f"[ERROR] Render failed: {result.stderr[:500]}")
                 return costs
+            print("     [OK] Complete")
 
             # Run package
             print("[4/4] Running package...")
@@ -207,6 +210,7 @@ class ValidationStudy:
             if result.returncode != 0:
                 print(f"[ERROR] Package failed: {result.stderr[:500]}")
                 return costs
+            print("     [OK] Complete")
 
             print("[OK] Pipeline preparation complete - packets created")
 
@@ -244,16 +248,17 @@ class ValidationStudy:
                             "--top-p", str(top_p),
                         ]
 
-                        # Run scoring from project root
-                        result = subprocess.run(cmd, capture_output=True, text=True, cwd=str(vfscore_root))
+                        # Run scoring from project root - let output display to terminal
+                        print(f"  [Running vfscore score for {item_id}...]")
+                        print("-" * 80)
+                        result = subprocess.run(cmd, cwd=str(vfscore_root))
+                        print("-" * 80)
 
                         if result.returncode == 0:
-                            print(f"    [OK] Successfully scored {item_id}")
+                            print(f"  [OK] {item_id} completed successfully\n")
                             total_runs += 1
                         else:
-                            print(f"    [ERROR] Failed to score {item_id}")
-                            if result.stderr:
-                                print(f"    Error: {result.stderr[:200]}")
+                            print(f"  [ERROR] {item_id} failed with exit code {result.returncode}\n")
                             failed_runs += 1
 
                     except KeyboardInterrupt:
