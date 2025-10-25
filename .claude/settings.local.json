@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(vfscore render-cand:*)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(wc:*)",
+      "Bash(python:*)",
+      "WebSearch",
+      "WebFetch(domain:ai.google.dev)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

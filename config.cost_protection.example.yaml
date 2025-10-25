@@ -1,0 +1,70 @@
+# Example configuration for cost protection (headless mode)
+# Copy relevant sections to config.local.yaml
+
+scoring:
+  # === COST PROTECTION (Headless Mode) ===
+  # Set maximum allowed cost to prevent unexpected charges
+  # Execution will automatically abort if estimated or actual cost exceeds this limit
+
+  max_cost_usd: 5.0  # Maximum $5 USD per run (adjust as needed)
+  # null = no limit (not recommended for production)
+  # 1.0 = $1 limit (safe for small tests)
+  # 5.0 = $5 limit (medium validation studies)
+  # 20.0 = $20 limit (large studies)
+
+  # Display options (informational, non-interactive)
+  display_billing_warning: true   # Show billing info at startup
+  display_cost_estimate: true     # Show cost estimate before execution
+
+  # === TYPICAL COSTS ===
+  # Gemini 2.5 Pro (if billing enabled):
+  # - ~$0.0137 per API call
+  # - 10 items × 3 repeats = 30 calls = ~$0.41
+  # - 52 items × 3 repeats = 156 calls = ~$2.14
+  # - 100 items × 5 repeats = 500 calls = ~$6.85
+
+  # === HOW IT WORKS ===
+  # 1. Pre-Flight Check:
+  #    - Displays billing warning (no prompt)
+  #    - Shows cost estimate
+  #    - Aborts if estimate > max_cost_usd
+  #
+  # 2. During Execution:
+  #    - Tracks actual costs in real-time
+  #    - Displays alerts at $1, $5, $10, $20 (informational only)
+  #    - Auto-stops when actual cost >= max_cost_usd
+  #
+  # 3. After Execution:
+  #    - Saves cost logs to outputs/llm_calls/cost_tracker.json
+  #    - Displays final cost summary
+
+  # === FOR FREE TIER ===
+  # If billing is DISABLED in Google Cloud:
+  # - No charges occur (free tier limits: 5 RPM, 100 RPD)
+  # - Cost tracking still runs (estimates what WOULD cost if billing enabled)
+  # - Useful for understanding potential costs before enabling billing
+
+  # === FOR PAID TIER ===
+  # If billing is ENABLED in Google Cloud:
+  # - max_cost_usd acts as safety limit
+  # - Execution stops automatically when limit reached
+  # - Prevents runaway costs from large batches
+
+  # === HEADLESS MODE ===
+  # ✅ No interactive prompts - runs completely automated
+  # ✅ Safe for archi3D integration or scheduled jobs
+  # ✅ Auto-aborts if cost limit exceeded
+  # ✅ Detailed logging for audit trail
+
+  # === DISABLING COST PROTECTION ===
+  # To disable warnings/estimates (not recommended):
+  # display_billing_warning: false
+  # display_cost_estimate: false
+  # max_cost_usd: null  # Remove hard limit (dangerous!)
+
+  # Other scoring settings
+  models: ["gemini-2.5-pro"]
+  repeats: 3
+  temperature: 0.0
+  top_p: 1.0
+  use_batch_mode: true

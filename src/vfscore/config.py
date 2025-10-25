@@ -69,6 +69,19 @@ class ScoringConfig(BaseModel):
     use_batch_mode: bool = True
     results_dir: Path | None = None
 
+    # Multi-key support (NEW)
+    api_keys: List[str] | None = None  # List of API keys (reads from env vars if starts with $)
+    key_labels: List[str] | None = None  # Optional labels for keys (e.g., ["mattia", "colleague1"])
+    use_async: bool = True  # Use async client with multi-key pool
+    rpm_limit: int = 5  # Requests per minute per key (free tier)
+    tpm_limit: int = 125000  # Tokens per minute per key (free tier)
+    rpd_limit: int = 100  # Requests per day per key (free tier)
+
+    # Cost protection (NEW)
+    max_cost_usd: float | None = None  # Maximum allowed cost in USD (None = no limit)
+    display_billing_warning: bool = True  # Display billing info at startup
+    display_cost_estimate: bool = True  # Display cost estimate before execution
+
 
 class SentinelsConfig(BaseModel):
     """Sentinel trials configuration."""

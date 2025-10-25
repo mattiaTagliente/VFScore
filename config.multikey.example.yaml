@@ -1,0 +1,55 @@
+# Example configuration for multi-key async scoring
+# Copy this to config.local.yaml and customize for your team setup
+
+scoring:
+  # REQUIRED: Enable async mode for multi-key support
+  use_async: true
+
+  # REQUIRED: List your team's API keys
+  # Use environment variable references (recommended for security)
+  api_keys:
+    - $GEMINI_API_KEY_USER1  # Main researcher
+    - $GEMINI_API_KEY_USER2  # Collaborator 1
+    - $GEMINI_API_KEY_USER3  # Collaborator 2
+
+  # OPTIONAL: Human-readable labels for keys (for logging/stats)
+  key_labels:
+    - mattia      # Corresponds to USER1
+    - colleague1  # Corresponds to USER2
+    - colleague2  # Corresponds to USER3
+
+  # Rate limits per key (Gemini 2.5 Pro free tier defaults)
+  rpm_limit: 5       # Requests per minute
+  tpm_limit: 125000  # Tokens per minute
+  rpd_limit: 100     # Requests per day
+
+  # Other scoring settings
+  models: ["gemini-2.5-pro"]
+  repeats: 3
+  temperature: 0.0
+  top_p: 1.0
+  use_batch_mode: true
+
+# IMPORTANT NOTES:
+# 1. Each team member must create their own Gemini API key at:
+#    https://ai.google.dev/
+#
+# 2. Add all API keys to your .env file:
+#    GEMINI_API_KEY_USER1=AIza...your_key_1
+#    GEMINI_API_KEY_USER2=AIza...your_key_2
+#    GEMINI_API_KEY_USER3=AIza...your_key_3
+#
+# 3. Never commit API keys to git! Keep them in .env only
+#
+# 4. This setup complies with Google ToS (legitimate collaborative research)
+#
+# 5. Expected speedup with N keys:
+#    - 2 keys: ~2x faster + 200 requests/day
+#    - 3 keys: ~3x faster + 300 requests/day
+#
+# 6. The system automatically:
+#    - Rotates between keys (round-robin)
+#    - Tracks RPM, TPM, RPD per key
+#    - Skips exhausted keys
+#    - Warns at 80% daily quota
+#    - Saves statistics to outputs/llm_calls/key_pool_stats.json

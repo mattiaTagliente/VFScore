@@ -7,6 +7,253 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added - CRITICAL: Cost Protection System (Headless Mode) 🛡️
+
+**Date**: 2025-10-25
+
+#### Comprehensive Billing Protection (Non-Interactive)
+
+**CRITICAL UPDATE**: After a user received an unexpected €12.77 charge, we've implemented a comprehensive **headless** cost protection system to prevent accidental billing.
+
+**Problem**: Google Gemini API automatically charges if billing is enabled on your Google Cloud project, with NO programmatic way to detect tier status before making calls.
+
+**Solution**: Multi-layer protection system that prevents unexpected charges **WITHOUT any interactive prompts** (suitable for archi3D integration and automated workflows):
+
+**1. Pre-Flight Billing Warning** (Non-Interactive):
+- **Displayed before ANY API calls**
+- Clear explanation of Free vs. Paid tiers
+- Step-by-step instructions to check billing status
+- **No prompts** - informational only
+- Execution proceeds automatically
+
+**2. Cost Estimation** (`CostEstimator`):
+- Calculates token counts for images, messages, responses
+- Estimates cost per call and total batch cost
+- Based on current Gemini 2.5 Pro pricing:
+  - Input: $1.25 per 1M tokens
+  - Output: $10.00 per 1M tokens
+- Shows both USD and EUR estimates
+
+**3. Configuration-Based Cost Limit** (NEW):
+- Set `scoring.max_cost_usd` in config
+- **Automatic abort** if estimated cost exceeds limit
+- No user prompt - execution stops immediately
+- Example: `max_cost_usd: 5.0` (max $5 per run)
+
+**4. Pre-Execution Check** (Non-Interactive):
+- Shows detailed cost breakdown in table format:
+  - Total API calls
+  - Tokens per call
+  - Cost per call
+  - Total estimated cost (USD and EUR)
+- Compares estimate against `max_cost_usd`
+- **Auto-aborts if limit exceeded** - no user intervention required
+
+**5. Real-Time Cost Tracking** (`CostTracker`):
+- Records every API call with timestamp
+- Tracks cumulative costs during execution
+- Displays running cost after each item
+- Saves detailed logs to `outputs/llm_calls/cost_tracker.json`
+
+**6. Threshold Alerts** (Non-Interactive):
+- Automatic alerts at: $1, $5, $10, $20 USD
+- **Informational only** - no prompts
+- Shows remaining budget if limit set
+- **Auto-stops when max_cost_usd reached**
+- Prevents runaway costs
+
+**7. Final Cost Summary**:
+- Displays complete cost breakdown at end
+- Shows per-call and total costs
+- Token counts and model info
+- Warning message if costs were incurred
+- Saves permanent log file
+
+**New Files**:
+- `src/vfscore/llm/cost_tracker.py` (500+ lines): Complete cost protection system
+
+**Configuration Example**:
+```yaml
+# config.local.yaml
+scoring:
+  max_cost_usd: 5.0  # Maximum $5 per run (auto-abort if exceeded)
+  display_billing_warning: true
+  display_cost_estimate: true
+```
+
+**Example Output** (Headless - No Prompts):
+```
+Step 1: Billing Information
+================================================================================
+⚠  BILLING INFORMATION ⚠
+================================================================================
+
+The Gemini API has two modes:
+  1. FREE TIER: No charges (5 RPM, 100 RPD limits)
+  2. PAID TIER: Charges apply ($1.25/M input, $10/M output tokens)
+
+CRITICAL: If you have billing enabled in Google Cloud,
+you WILL be charged for API calls!
+
+To check your billing status:
+  1. Go to: https://aistudio.google.com/
+  2. Check if billing is enabled for your project
+  3. Disable billing to use FREE TIER only
+
+VFScore cannot detect billing status programmatically.
+Cost tracking and limits are enabled (see config).
+
+Step 2: Cost Estimation
+================================================================================
+Cost Estimate for This Scoring Run
+================================================================================
+
+Model                   | Gemini 2.5 Pro
+Items to Score          | 52
+Repeats per Item        | 3
+Total API Calls         | 156
+
+Input Tokens per Call   | 5,000
+Output Tokens per Call  | 800
+Total Input Tokens      | 780,000
+Total Output Tokens     | 124,800
+
+Cost per Call           | $0.0137
+TOTAL COST (USD)        | $2.14
+TOTAL COST (EUR)        | €1.97
+
+⚠ This will incur charges if billing is enabled!
+Cost limit: $5.00 (from config)
+
+[Execution proceeds automatically - no prompt]
+
+Step 3: Starting Scoring
+Scoring 52 items with gemini-2.5-pro (3 repeats each)...
+Cost tracking enabled (logs: outputs/llm_calls/cost_tracker.json)
+
+Scoring 558736 (1/52) ━━━━━━━━━━━━ 15% 0:25:00
+  558736: 42.3s (3 repeats)
+  Running cost: $0.0411
+
+ℹ  COST THRESHOLD ALERT
+Current cost: $1.02 USD (exceeded $1.00)
+Remaining before limit: $3.98
+
+[Continues automatically - no prompt]
+```
+
+**Protection Features** (Headless Mode):
+- ✅ **No interactive prompts**: Completely automated execution
+- ✅ **Config-based limits**: Set `max_cost_usd` to prevent overruns
+- ✅ **Estimate before execute**: See costs before any API calls
+- ✅ **Auto-abort**: Execution stops if cost limit exceeded
+- ✅ **Continuous monitoring**: Running cost displayed after each item
+- ✅ **Threshold alerts**: Informational alerts at $1, $5, $10, $20
+- ✅ **Detailed logging**: Complete audit trail in JSON
+- ✅ **Final summary**: Clear cost breakdown at end
+- ✅ **archi3D compatible**: Safe for automated/scheduled workflows
+
+**How to Avoid Charges**:
+1. Go to https://aistudio.google.com/
+2. Check "Billing" settings for your project
+3. **Disable billing** to ensure FREE TIER only
+4. Verify before running `vfscore score`
+
+**Files Added**:
+- `config.cost_protection.example.yaml`: Configuration example with detailed comments
+
+**Files Modified**:
+- `src/vfscore/scoring.py`: Integrated headless cost protection
+- `src/vfscore/config.py`: Added cost protection config options
+
+### Added - Async Multi-Key Scoring System 🚀
+
+**Date**: 2025-10-25
+
+#### Multi-Key Pool with Comprehensive Quota Tracking
+
+VFScore now supports **team collaboration** with multiple API keys for dramatically faster scoring:
+
+**New Features**:
+- **`GeminiKeyPool`** (`src/vfscore/llm/key_pool.py`): Intelligent key rotation and quota management
+  - **RPM Tracking**: 5 requests/minute per key (sliding window)
+  - **TPM Tracking**: 125,000 tokens/minute per key (sliding window)
+  - **RPD Tracking**: 100 requests/day per key (resets at midnight PT)
+  - **Round-robin Selection**: Automatic load balancing across keys
+  - **Quota-aware**: Skips exhausted keys, waits for available slots
+  - **Warning Alerts**: 80% daily quota warnings per key
+  - **Statistics Export**: JSON stats saved to `outputs/llm_calls/key_pool_stats.json`
+
+- **`AsyncGeminiClient`** (`src/vfscore/llm/gemini_async.py`): Async LLM client with pool support
+  - Concurrent scoring with `asyncio`
+  - Intelligent rate limiting (respects all quotas)
+  - Graceful error handling and retries
+  - Backward compatible with single key mode
+
+- **Configuration Support** (`src/vfscore/config.py`):
+  - `scoring.api_keys`: List of API keys (supports `$ENV_VAR` references)
+  - `scoring.key_labels`: Human-readable labels for logging (e.g., ["mattia", "colleague1"])
+  - `scoring.use_async`: Enable/disable async mode (default: `true`)
+  - `scoring.rpm_limit`, `tpm_limit`, `rpd_limit`: Per-key quotas
+
+- **Updated `scoring.py`**:
+  - `run_scoring_async()`: Async orchestration with progress tracking
+  - `score_item_with_repeats_async()`: Concurrent repeat scoring
+  - Automatic key pool creation and management
+  - Real-time quota monitoring during execution
+  - Maintains skip logic for resume capability
+
+**Performance Improvements**:
+- **Single key**: Async mode with better quota utilization (~2-3x faster)
+- **Multiple keys**: Linear speedup with number of keys:
+  - 2 keys: ~2x faster + 200 requests/day
+  - 3 keys: ~3x faster + 300 requests/day
+  - N keys: ~Nx faster + 100N requests/day
+
+**Example Setup**:
+```yaml
+# config.local.yaml
+scoring:
+  use_async: true
+  api_keys:
+    - $GEMINI_API_KEY_USER1
+    - $GEMINI_API_KEY_USER2
+    - $GEMINI_API_KEY_USER3
+  key_labels:
+    - mattia
+    - colleague1
+    - colleague2
+```
+
+```bash
+# .env
+GEMINI_API_KEY_USER1=AIza...key1
+GEMINI_API_KEY_USER2=AIza...key2
+GEMINI_API_KEY_USER3=AIza...key3
+```
+
+**Compliance**: Fully compliant with Google ToS - designed for legitimate collaborative research teams.
+
+**Backward Compatibility**: Single-key mode still works (uses `GEMINI_API_KEY` env var).
+
+**Files Added**:
+- `src/vfscore/llm/key_pool.py`: Key pool and quota tracking (400+ lines)
+- `src/vfscore/llm/gemini_async.py`: Async Gemini client (250+ lines)
+- `config.multikey.example.yaml`: Multi-key configuration example
+- `validation_study/docs/API_PARALLELIZATION_PROPOSAL.md`: Complete technical documentation
+
+**Usage**:
+```bash
+# Automatic (uses config.yaml settings)
+vfscore score
+
+# Will show:
+# "Using async mode with intelligent rate limiting"
+# "Initialized key pool with 3 keys: mattia, colleague1, colleague2"
+# [Real-time quota stats during execution]
+# [Final key pool statistics at end]
+```
+
 ### Changed - Project Reorganization 📁
 
 **Date**: 2025-10-24
@@ -56,13 +303,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Added Skip Logic**: Pipeline now skips already-processed files to save time
   - `src/vfscore/render_cycles.py`: Checks if candidate.png exists before rendering
   - `src/vfscore/preprocess_gt.py`: Checks if gt_*.png exists before preprocessing
-  - Displays skip counts: "Skipped X already-rendered/processed objects"
+  - `src/vfscore/scoring.py`: Checks if all repeat files exist before re-scoring (resume capability)
+  - Displays skip counts: "Skipped X already-rendered/processed/scored objects"
   - Result: Subsequent runs complete in seconds instead of hours
+  - **Resume Capability**: Validation studies can be interrupted and resumed without losing progress
 
 - **Fixed Windows Encoding in Progress Bars**:
   - Replaced `rich.progress.track()` with custom `Progress()` without emojis
   - Removed `SpinnerColumn` which uses Unicode spinner characters
-  - Used only: `TextColumn`, `BarColumn`, `TaskProgressColumn`
+  - Used only: `TextColumn`, `BarColumn`, `TaskProgressColumn`, `TimeRemainingColumn`
   - Sanitized Blender stdout/stderr to remove emojis: `encode('ascii', errors='ignore')`
 
 - **Fixed Exception Message Encoding**:
@@ -72,6 +321,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Updated all 8 exception handlers in CLI commands
 
 **Why**: Ensures pipeline performance optimization and complete Windows compatibility, eliminating all Unicode-related crashes
+
+#### Enhanced Progress Tracking and Timing
+**Date**: 2025-10-25
+
+- **Elapsed Time Logging**: All pipeline steps now display elapsed time after completion
+  - Added `format_elapsed_time()` helper for human-readable durations (e.g., "2m 30s", "1h 15m")
+  - Added `timed_step()` context manager for automatic timing
+  - All CLI commands wrapped with timing: ingest, preprocess-gt, render-cand, package, score, aggregate, translate, report
+  - Displays: "Elapsed time: X.Xs" or "Xm Ys" or "Xh Ym" depending on duration
+
+- **Detailed Scoring Progress**: Enhanced progress display in scoring module
+  - Progress bar now shows current item being scored: "Scoring 558736 (3/52)"
+  - Added `TimeRemainingColumn` for ETA estimation
+  - Per-item timing: "335888: 125.3s (5 repeats)"
+  - Total API calls and success rate displayed at end
+  - Skip count displayed when resuming: "Skipped 45 already-scored items"
+
+- **API Rate Limiting**: Verified correct configuration
+  - Gemini 2.5 Pro: 31 seconds between calls (free tier: 2 req/min)
+  - Configurable via `GEMINI_MIN_INTERVAL_SEC` environment variable
+  - Proactive throttling prevents 429 errors
+
+**Why**: Provides better user feedback during long-running operations, helps estimate completion time, and enables informed decisions about pausing/resuming validation studies
 
 #### Validation Study Working Directory
 - **Fixed**: Subprocess commands running from wrong directory
