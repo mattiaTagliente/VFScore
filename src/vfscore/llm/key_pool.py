@@ -269,7 +269,7 @@ class GeminiKeyPool:
             rpd_limit = stats["rpd"]["limit"]
 
             if rpd_used == int(rpd_limit * 0.8):
-                console.print(f"[yellow]⚠ [{key_label}] 80% daily quota used ({rpd_used}/{rpd_limit})[/yellow]")
+                console.print(f"[yellow][!] [{key_label}] 80% daily quota used ({rpd_used}/{rpd_limit})[/yellow]")
 
     def get_all_stats(self) -> Dict[str, Dict[str, Any]]:
         """Get statistics for all keys."""

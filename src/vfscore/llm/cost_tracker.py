@@ -50,7 +50,7 @@ class CostEstimator:
             self.pricing_key = "gemini-2.5-pro"
 
         if self.pricing_key not in self.PRICING:
-            console.print(f"[yellow]⚠ Unknown model: {model_name}, using Gemini 2.5 Pro pricing[/yellow]")
+            console.print(f"[yellow][!] Unknown model: {model_name}, using Gemini 2.5 Pro pricing[/yellow]")
             self.pricing_key = "gemini-2.5-pro"
 
         self.pricing = self.PRICING[self.pricing_key]
@@ -277,7 +277,7 @@ def display_billing_warning():
     This is informational only - execution will proceed automatically.
     """
     console.print("\n" + "=" * 80)
-    console.print("[bold yellow]⚠  BILLING INFORMATION ⚠[/bold yellow]")
+    console.print("[bold yellow][!] BILLING INFORMATION [!][/bold yellow]")
     console.print("=" * 80)
     console.print()
     console.print("[yellow]The Gemini API has two modes:[/yellow]")
@@ -349,7 +349,7 @@ def display_cost_estimate(
 
     # Check against limit
     if max_cost_usd is not None and estimated_cost_usd > max_cost_usd:
-        console.print(f"[bold red]❌ COST LIMIT EXCEEDED[/bold red]")
+        console.print(f"[bold red][X] COST LIMIT EXCEEDED[/bold red]")
         console.print(f"[red]Estimated cost (${estimated_cost_usd:.2f}) exceeds limit (${max_cost_usd:.2f})[/red]")
         console.print(f"[red]Execution aborted to prevent charges.[/red]")
         console.print()
@@ -357,7 +357,7 @@ def display_cost_estimate(
         return False
 
     if estimated_cost_usd > 0.10:
-        console.print("[yellow]⚠ This will incur charges if billing is enabled![/yellow]")
+        console.print("[yellow][!] This will incur charges if billing is enabled![/yellow]")
         if max_cost_usd is not None:
             console.print(f"[yellow]Cost limit: ${max_cost_usd:.2f} (from config)[/yellow]")
         else:
@@ -387,7 +387,7 @@ def check_cost_threshold(
         if not hasattr(tracker, "_max_cost_exceeded"):
             tracker._max_cost_exceeded = True
             console.print()
-            console.print("[bold red]❌ MAXIMUM COST LIMIT REACHED[/bold red]")
+            console.print("[bold red][X] MAXIMUM COST LIMIT REACHED[/bold red]")
             console.print(f"[red]Current cost: ${tracker.total_cost_usd:.2f} USD >= ${max_cost_usd:.2f}[/red]")
             console.print(f"[red]Execution stopped to prevent further charges.[/red]")
             console.print()
@@ -400,7 +400,7 @@ def check_cost_threshold(
             setattr(tracker, f"_threshold_{threshold}_passed", True)
 
             console.print()
-            console.print("[bold yellow]ℹ  COST THRESHOLD ALERT[/bold yellow]")
+            console.print("[bold yellow][i] COST THRESHOLD ALERT[/bold yellow]")
             console.print(f"[yellow]Current cost: ${tracker.total_cost_usd:.2f} USD (exceeded ${threshold:.2f})[/yellow]")
             if max_cost_usd is not None:
                 remaining = max_cost_usd - tracker.total_cost_usd
