@@ -275,6 +275,36 @@ class GeminiKeyPool:
         """Get statistics for all keys."""
         return {label: tracker.get_stats() for label, tracker in self.trackers.items()}
 
+    def print_initial_quota_status(self):
+        """Print initial quota status (RPD usage) for all keys at startup."""
+        console.print("\n[bold cyan]Initial API Key Quota Status[/bold cyan]")
+        console.print("=" * 80)
+
+        total_rpd_used = 0
+        total_rpd_limit = 0
+
+        for label, stats in self.get_all_stats().items():
+            rpd_used = stats['rpd']['current']
+            rpd_limit = stats['rpd']['limit']
+            rpd_remaining = rpd_limit - rpd_used
+            usage_pct = (rpd_used / rpd_limit * 100) if rpd_limit > 0 else 0
+
+            total_rpd_used += rpd_used
+            total_rpd_limit += rpd_limit
+
+            status = "[green]OK[/green]" if rpd_remaining > 20 else "[yellow]LOW[/yellow]" if rpd_remaining > 0 else "[red]EXHAUSTED[/red]"
+            console.print(
+                f"  [{label}]: {rpd_used}/{rpd_limit} used ({rpd_remaining} remaining, {usage_pct:.0f}%) - {status}"
+            )
+
+        total_rpd_remaining = total_rpd_limit - total_rpd_used
+        total_usage_pct = (total_rpd_used / total_rpd_limit * 100) if total_rpd_limit > 0 else 0
+
+        console.print("=" * 80)
+        console.print(f"[bold]Total capacity:[/bold] {total_rpd_used}/{total_rpd_limit} used ({total_usage_pct:.1f}%)")
+        console.print(f"[bold]Remaining today:[/bold] [green]{total_rpd_remaining} requests[/green] ({total_rpd_remaining/total_rpd_limit*100:.1f}%)")
+        console.print("=" * 80 + "\n")
+
     def print_stats(self):
         """Print formatted statistics for all keys."""
         console.print("\n" + "=" * 80)

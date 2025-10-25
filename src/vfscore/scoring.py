@@ -475,6 +475,10 @@ async def run_scoring_async(
     # Create key pool
     key_pool = create_key_pool(config)
 
+    # Display initial quota status
+    if key_pool:
+        key_pool.print_initial_quota_status()
+
     # Track statistics
     total_calls = 0
     success_items = 0

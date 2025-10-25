@@ -166,11 +166,24 @@ class AsyncGeminiClient(BaseLLMClient):
                     wait_time = self._extract_retry_seconds(err_msg, default=30.0)
                     wait_time += random.uniform(0.2, 0.6)
 
+                    # Determine which rate limit was hit
+                    limit_type = "UNKNOWN"
+                    if "requests per day" in err_msg.lower() or "rpd" in err_msg.lower() or "50" in err_msg:
+                        limit_type = "RPD (50 requests/day)"
+                    elif "requests per minute" in err_msg.lower() or "rpm" in err_msg.lower() or "limit: 2" in err_msg:
+                        limit_type = "RPM (2 requests/minute)"
+                    elif "tokens per minute" in err_msg.lower() or "tpm" in err_msg.lower():
+                        limit_type = "TPM (125K tokens/minute)"
+                    elif "quota" in err_msg.lower():
+                        limit_type = "QUOTA (likely RPM or RPD)"
+
                     if attempt < max_retries - 1:
-                        console.print(
-                            f"[yellow]  [{key_label}] Rate limit hit, retrying in {wait_time:.1f}s "
-                            f"(attempt {attempt + 1}/{max_retries})[/yellow]"
+                        # Use console.log() to avoid interfering with progress bar
+                        console.log(
+                            f"[yellow][{key_label or 'unknown'}] Rate limit hit ({limit_type}), "
+                            f"retrying in {wait_time:.1f}s (attempt {attempt + 1}/{max_retries})[/yellow]"
                         )
+                        console.log(f"[dim]  Error: {err_msg[:120]}[/dim]")
                         await asyncio.sleep(wait_time)
                         continue
                     else:
@@ -179,8 +192,8 @@ class AsyncGeminiClient(BaseLLMClient):
                 # Other errors: exponential backoff
                 if attempt < max_retries - 1:
                     wait_time = (2 ** attempt) + random.uniform(0.1, 0.3)
-                    console.print(
-                        f"[yellow]  [{key_label}] API error: {e}, retrying in {wait_time:.1f}s "
+                    console.log(
+                        f"[yellow][{key_label or 'unknown'}] API error: {e}, retrying in {wait_time:.1f}s "
                         f"(attempt {attempt + 1}/{max_retries})[/yellow]"
                     )
                     await asyncio.sleep(wait_time)
@@ -203,6 +216,8 @@ class AsyncGeminiClient(BaseLLMClient):
             # Multi-key mode: get available key from pool
             try:
                 api_key, key_label = await self.key_pool.get_available_key(estimated_tokens=5000)
+                # Log which key is being used (verbose mode - can be disabled)
+                # console.print(f"[dim]    Using key: {key_label}[/dim]")
                 return await self._call_api_with_key(
                     api_key, key_label, system_message, user_message, image_paths, max_retries
                 )
