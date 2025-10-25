@@ -21,7 +21,6 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 from rich.console import Console
-from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
 
 from vfscore.config import Config
 from vfscore.llm.gemini import GeminiClient
@@ -485,116 +484,110 @@ async def run_scoring_async(
     skipped_items = 0
     total_expected_calls = len(packets) * repeats
 
-    with Progress(
-        TextColumn("[progress.description]{task.description}"),
-        BarColumn(),
-        TaskProgressColumn(),
-        TimeRemainingColumn(),
-        console=console,
-    ) as progress:
-        task = progress.add_task(f"Scoring with {model} (async)", total=len(packets))
+    # Header for scoring session
+    console.print(f"\n[bold cyan]Starting async scoring with {model}[/bold cyan]")
+    console.print(f"[dim]Total items: {len(packets)} | Repeats per item: {repeats} | Expected calls: {total_expected_calls}[/dim]")
+    console.print("=" * 80 + "\n")
 
-        for idx, packet in enumerate(packets, 1):
-            item_id = packet["item_id"]
-            item_start = time.time()
+    for idx, packet in enumerate(packets, 1):
+        item_id = packet["item_id"]
+        item_start = time.time()
 
-            # Update progress
-            progress.update(task, description=f"Scoring {item_id} ({idx}/{len(packets)})")
+        # Show progress header
+        console.print(f"[bold][{idx}/{len(packets)}][/bold] Processing {item_id}...")
 
-            # Build output directory path
-            if config.scoring.use_batch_mode:
-                output_dir = base_llm_calls_dir / model_dir_name / item_id / batch_dir_name
-                item_dir = base_llm_calls_dir / model_dir_name / item_id
-            else:
-                output_dir = base_llm_calls_dir / model_dir_name / item_id
-                item_dir = output_dir
+        # Build output directory path
+        if config.scoring.use_batch_mode:
+            output_dir = base_llm_calls_dir / model_dir_name / item_id / batch_dir_name
+            item_dir = base_llm_calls_dir / model_dir_name / item_id
+        else:
+            output_dir = base_llm_calls_dir / model_dir_name / item_id
+            item_dir = output_dir
 
-            # Smart skip: Check across all batches for matching parameters
-            existing_repeats = count_existing_repeats_with_parameters(
-                item_dir, actual_temperature, actual_top_p
+        # Smart skip: Check across all batches for matching parameters
+        existing_repeats = count_existing_repeats_with_parameters(
+            item_dir, actual_temperature, actual_top_p
+        )
+
+        if existing_repeats >= repeats:
+            skipped_items += 1
+            success_items += 1
+            total_calls += repeats
+            console.print(f"  [yellow]SKIPPED[/yellow]: already have {existing_repeats}/{repeats} repeats with temp={actual_temperature}, top_p={actual_top_p}\n")
+            continue
+        elif existing_repeats > 0:
+            console.print(f"  [dim]Found {existing_repeats}/{repeats} existing repeats, running {repeats - existing_repeats} more...[/dim]")
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+        # Save batch metadata
+        if config.scoring.use_batch_mode and batch_metadata:
+            batch_info_path = output_dir / "batch_info.json"
+            with open(batch_info_path, "w", encoding="utf-8") as f:
+                json.dump(batch_metadata, f, indent=2, ensure_ascii=False)
+
+        try:
+            results = await score_item_with_repeats_async(
+                packet=packet,
+                model_name=model,
+                temperature=actual_temperature,
+                top_p=actual_top_p,
+                rubric_weights=config.scoring.rubric_weights,
+                repeats=repeats,
+                output_dir=output_dir,
+                key_pool=key_pool,
             )
 
-            if existing_repeats >= repeats:
-                skipped_items += 1
+            if results:
+                num_results = len(results)
+                total_calls += num_results
                 success_items += 1
-                total_calls += repeats
-                console.print(f"[dim]  {item_id}: [yellow]skipped[/yellow] (already have {existing_repeats}/{repeats} repeats with temp={actual_temperature}, top_p={actual_top_p})[/dim]")
-                progress.advance(task)
-                continue
-            elif existing_repeats > 0:
-                console.print(f"[dim]  {item_id}: Found {existing_repeats}/{repeats} existing repeats, running {repeats - existing_repeats} more...[/dim]")
 
-            output_dir.mkdir(parents=True, exist_ok=True)
+                # Record costs for each repeat
+                num_gt_images = len(packet.get("gt_labeled_paths", []))
+                for _ in range(num_results):
+                    cost_tracker.record_call(item_id, num_gt_images)
 
-            # Save batch metadata
-            if config.scoring.use_batch_mode and batch_metadata:
-                batch_info_path = output_dir / "batch_info.json"
-                with open(batch_info_path, "w", encoding="utf-8") as f:
-                    json.dump(batch_metadata, f, indent=2, ensure_ascii=False)
+                # Calculate per-call metrics
+                item_elapsed = time.time() - item_start
+                time_per_call = item_elapsed / num_results if num_results > 0 else 0
+                program_elapsed = time.time() - program_start_time
 
-            try:
-                results = await score_item_with_repeats_async(
-                    packet=packet,
-                    model_name=model,
-                    temperature=actual_temperature,
-                    top_p=actual_top_p,
-                    rubric_weights=config.scoring.rubric_weights,
-                    repeats=repeats,
-                    output_dir=output_dir,
-                    key_pool=key_pool,
-                )
+                # Estimate cost per call
+                cost_per_call, _ = cost_estimator.estimate_cost(num_gt_images, 1)
+                total_call_cost = cost_per_call * num_results
 
-                if results:
-                    num_results = len(results)
-                    total_calls += num_results
-                    success_items += 1
+                # Log detailed information
+                console.print(f"  [green]COMPLETED[/green]:")
+                console.print(f"    Calls: {num_results} API calls in {item_elapsed:.1f}s ({time_per_call:.1f}s/call)")
+                console.print(f"    Cost estimate: ${total_call_cost:.4f} for this item (${cost_per_call:.4f}/call) [yellow](free tier)[/yellow]")
+                console.print(f"    Progress: {total_calls}/{total_expected_calls} total calls ({total_calls/total_expected_calls*100:.1f}%)")
+                console.print(f"    Elapsed: {program_elapsed/60:.1f} min since program start")
+                console.print(f"    Running cost estimate: ${cost_tracker.total_cost_usd:.4f} [yellow](free if billing disabled)[/yellow]")
 
-                    # Record costs for each repeat
-                    num_gt_images = len(packet.get("gt_labeled_paths", []))
-                    for _ in range(num_results):
-                        cost_tracker.record_call(item_id, num_gt_images)
+                # Show RPD usage for each key
+                if key_pool:
+                    console.print(f"    API Key Usage (RPD):")
+                    all_stats = key_pool.get_all_stats()
+                    for label, stats in all_stats.items():
+                        rpd_used = stats["rpd"]["current"]
+                        rpd_limit = stats["rpd"]["limit"]
+                        rpd_remaining = rpd_limit - rpd_used
+                        usage_pct = (rpd_used / rpd_limit * 100) if rpd_limit > 0 else 0
+                        console.print(f"      [{label}]: {rpd_used}/{rpd_limit} used ({rpd_remaining} remaining, {usage_pct:.0f}%)")
 
-                    # Calculate per-call metrics
-                    item_elapsed = time.time() - item_start
-                    time_per_call = item_elapsed / num_results if num_results > 0 else 0
-                    program_elapsed = time.time() - program_start_time
+                console.print()  # Blank line for readability
 
-                    # Estimate cost per call
-                    cost_per_call, _ = cost_estimator.estimate_cost(num_gt_images, 1)
-                    total_call_cost = cost_per_call * num_results
+                # Check cost thresholds (auto-stop if max exceeded)
+                if not check_cost_threshold(cost_tracker, max_cost_usd=config.scoring.max_cost_usd):
+                    console.print("[red]Scoring stopped (cost limit reached).[/red]")
+                    break
 
-                    # Log detailed information
-                    console.print()
-                    console.print(f"[bold cyan]{item_id}[/bold cyan] completed:")
-                    console.print(f"  [dim]Calls:[/dim] {num_results} API calls in {item_elapsed:.1f}s ({time_per_call:.1f}s/call)")
-                    console.print(f"  [dim]Cost estimate:[/dim] ${total_call_cost:.4f} for this item (${cost_per_call:.4f}/call) [yellow](free tier if billing disabled)[/yellow]")
-                    console.print(f"  [dim]Progress:[/dim] {total_calls}/{total_expected_calls} total calls ({total_calls/total_expected_calls*100:.1f}%)")
-                    console.print(f"  [dim]Elapsed:[/dim] {program_elapsed/60:.1f} min since program start")
-                    console.print(f"  [dim]Running cost estimate:[/dim] ${cost_tracker.total_cost_usd:.4f} [yellow](free if billing disabled)[/yellow]")
-
-                    # Show RPD usage for each key
-                    if key_pool:
-                        console.print(f"  [dim]API Key Usage (RPD):[/dim]")
-                        all_stats = key_pool.get_all_stats()
-                        for label, stats in all_stats.items():
-                            rpd_used = stats["rpd"]["current"]
-                            rpd_limit = stats["rpd"]["limit"]
-                            rpd_remaining = rpd_limit - rpd_used
-                            usage_pct = (rpd_used / rpd_limit * 100) if rpd_limit > 0 else 0
-                            console.print(f"    [{label}]: {rpd_used}/{rpd_limit} used ({rpd_remaining} remaining, {usage_pct:.0f}%)")
-
-                    # Check cost thresholds (auto-stop if max exceeded)
-                    if not check_cost_threshold(cost_tracker, max_cost_usd=config.scoring.max_cost_usd):
-                        console.print("[red]Scoring stopped (cost limit reached).[/red]")
-                        break
-
-            except QuotaExhaustedError as e:
-                console.print(f"[red]Quota exhausted: {e}[/red]")
-                break  # Stop processing if all keys exhausted
-            except Exception as e:
-                console.print(f"[red]Failed to score {item_id}: {e}[/red]")
-
-            progress.advance(task)
+        except QuotaExhaustedError as e:
+            console.print(f"  [red]QUOTA EXHAUSTED: {e}[/red]\n")
+            break  # Stop processing if all keys exhausted
+        except Exception as e:
+            console.print(f"  [red]FAILED: {e}[/red]\n")
 
     # Print final key pool statistics
     if key_pool:
