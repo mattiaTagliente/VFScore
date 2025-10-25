@@ -1,0 +1,53 @@
+{
+  "n_objects": 9,
+  "n_settings": 10,
+  "n_repeats": 2,
+  "total_api_calls": 180,
+  "estimated_time_free_tier": {
+    "minutes": 90.0,
+    "hours": 1.5,
+    "formatted": "1h 30m"
+  },
+  "parameter_grid": [
+    {
+      "temp": 0.0,
+      "top_p": 1.0
+    },
+    {
+      "temp": 0.2,
+      "top_p": 1.0
+    },
+    {
+      "temp": 0.2,
+      "top_p": 0.95
+    },
+    {
+      "temp": 0.2,
+      "top_p": 0.9
+    },
+    {
+      "temp": 0.5,
+      "top_p": 1.0
+    },
+    {
+      "temp": 0.5,
+      "top_p": 0.95
+    },
+    {
+      "temp": 0.5,
+      "top_p": 0.9
+    },
+    {
+      "temp": 0.8,
+      "top_p": 1.0
+    },
+    {
+      "temp": 0.8,
+      "top_p": 0.95
+    },
+    {
+      "temp": 0.8,
+      "top_p": 0.9
+    }
+  ]
+}

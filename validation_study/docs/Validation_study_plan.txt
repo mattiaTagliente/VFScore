@@ -1,0 +1,103 @@
+Given VFScore’s scope (appearance-only scoring with confidence metrics and batch reports), here’s how I’d evaluate whether repeat LLM calls are meaningful and how to tune the design so repeats actually test reliability instead of re-printing the same answer. 
+
+# 1) Make repeats actually stochastic (but controlled)
+
+Right now the code uses `temperature=0.0` → greedy/argmax → identical outputs across repeats/batches. That prevents any variance estimation.
+**Change once, measure forever:**
+
+* **Set sampling**: use `temperature ∈ {0.2, 0.5, 0.8}`, `top_p ∈ {1.0, 0.95, 0.9}` in a small grid.
+* **Add a prompt nonce**: append a hidden line like `run_id: <uuid4>` to the user message per repeat so inputs are statistically independent (even if servers cache, the prompt differs).
+* **Log all knobs**: for every call store `model_name, temperature, top_p, prompt_hash, run_id, timestamp` alongside the raw JSON.
+  This preserves the current rubric/JSON discipline while enabling proper variance measurement. (You already aggregate and report confidence; we’ll extend that.) 
+
+# 2) Design the reliability study (fits your pipeline & reports)
+
+We’ll quantify three things: **stability across repeats**, **agreement with humans**, and **sensitivity to real appearance differences**.
+
+## A. Stability across repeats (per item, per setting)
+
+For each `(temperature, top_p)` setting:
+
+1. Run `R=5` repeats per item (maybe this could be flexible or easy to adjust)
+2. Compute per-item statistics:
+
+   * **Median** and **MAD** (you already surface MAD-based confidence—keep it as the primary dispersion metric). 
+   * **95% CI of the mean**: `mean ± 1.96·sd/√R`
+   * **ICC(1,k)** (intra-class correlation, “k raters” = repeats) → overall repeatability at that setting.
+3. Convergence curve: for n=1…R, plot running mean and CI half-width. Define a *practical* stop rule (e.g., stop when CI ≤ ±2 points). This tells you whether 3, 5, or 10 repeats are needed.
+
+**Decision rule**: choose the lowest-variance setting that also keeps JSON validity high and costs acceptable. Record **ICC≥0.85** as “excellent” repeat reliability.
+
+## B. Agreement with human judgements
+
+On a stratified subset (≥5 items across your l1/l2/l3 categories):
+
+1. Collect **human scores** (we have a single number for visual fidelity expressed in the range 0.000-1.000). 
+2. Compare the LLM **aggregate** (median of repeats) against the **human mean**:
+
+   * Pearson/Spearman correlation
+   * **MAE** and **RMSE**
+   * **Calibration**: fit a simple isotonic or linear calibration from LLM→human; report pre/post-calibration error.
+3. Inter-human ICC vs. LLM-vs-human ICC to see if the model sits within human disagreement.
+
+## C. Sensitivity / signal detection (sentinels & controlled deltas)
+
+Build a small **golden set** where you *know* the appearance change:
+
+* Same model with **+5° hue shift**, added **logo/no logo**, etc.
+* Include **positive** and **negative** sentinels (very close vs. obviously off) per l3 category, aligning with your roadmap for sentinel trials. Expect monotonic score changes when you increase the “error.” 
+
+Metrics:
+
+* **Effect size** (Cohen’s d) between true/altered conditions
+* **Hit rate**: fraction of pairs where the LLM assigns the better score to the truly closer image
+* **Dose–response**: regression of score vs. known delta magnitude (e.g., roughness step)
+
+# 3) Pick defaults from evidence (not guesswork)
+
+Run a one-time pilot on items:
+
+1. **Parameter sweep**: all `(temperature, top_p)` combos with `R=5` repeats → collect JSON validity rate, mean tokens/cost, ICC, median MAD, and human agreement on the labeled subset.
+2. **Choose defaults** with a simple rubric:
+
+   * JSON validity ≥ 98%
+   * ICC(1,10) ≥ 0.85
+   * Median MAD ≤ 5 points
+   * Spearman ρ with humans ≥ 0.7 (post-calibration acceptable)
+
+# 4) Strengthen the aggregator & confidence outputs
+
+Your README already advertises **confidence metrics** in the report; evolve them from MAD-only to a compact panel per item: 
+
+* **Final score**: **trimmed mean** (e.g., 20% trim) or **median** of repeats
+* **Uncertainty**: MAD and 95% CI half-width
+* **Repeat reliability**: per-item **ICC** (optional if you have enough repeats)
+* **Flags**: JSON-parse failures, outlier repeats (|z|>2.5 from median) discarded
+
+# 5) Minimal code changes to enable the study
+
+* **Expose sampling**: CLI flags `--temperature`, `--top-p`, and pass through config → LLM client.
+* **Prompt nonce**: add `run_id` to the user message for each repeat.
+* **Logging**: write one row per repeat with all parameters + hashes.
+* **Aggregator**: compute median, MAD, CI, and (optionally) ICC when `repeats≥3`.
+
+# 6) Sample study protocol you can run now
+
+1. **Baseline (deterministic)**:  confirms pipeline health (but useless for variance).
+2. **Stochastic grid**.
+3. **Human subset**
+4. **Sentinel set**
+5. **Analyze**:
+
+   * Stability: ICC, MAD, CI width → **how many repeats** needed for ±2 points?
+   * Agreement: correlations & error, pre/post calibration
+   * Sensitivity: effect sizes, hit rate, dose–response
+6. **Select defaults**, document them in README + config, and **freeze** for future batches.
+
+---
+
+**Bottom line:**
+
+* Deterministic setup made repeats identical; switch to controlled sampling and add a nonce.
+* Run a short, structured reliability study (stability, agreement, sensitivity).
+* Let the data pick your defaults and the required number of repeats so your **MAD-based confidence** in the bilingual report actually reflects uncertainty rather than the absence of sampling. 

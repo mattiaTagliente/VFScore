@@ -11,6 +11,8 @@ os.environ["GOOGLE_LOGGING_VERBOSITY"] = "3"
 
 from pathlib import Path
 from typing import Optional
+import time
+from contextlib import contextmanager
 
 import typer
 from rich.console import Console
@@ -35,6 +37,31 @@ console = Console(legacy_windows=True)
 def sanitize_error(e: Exception) -> str:
     """Sanitize exception message for Windows compatibility (remove emojis)."""
     return str(e).encode('ascii', errors='ignore').decode('ascii')
+
+
+def format_elapsed_time(seconds: float) -> str:
+    """Format elapsed time in human-readable format."""
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    elif seconds < 3600:
+        minutes = int(seconds // 60)
+        secs = int(seconds % 60)
+        return f"{minutes}m {secs}s"
+    else:
+        hours = int(seconds // 3600)
+        minutes = int((seconds % 3600) // 60)
+        return f"{hours}h {minutes}m"
+
+
+@contextmanager
+def timed_step(step_name: str):
+    """Context manager to time pipeline steps and log elapsed time."""
+    start_time = time.time()
+    try:
+        yield
+    finally:
+        elapsed = time.time() - start_time
+        console.print(f"[dim]Elapsed time: {format_elapsed_time(elapsed)}[/dim]")
 
 
 def version_callback(value: bool) -> None:
@@ -78,13 +105,14 @@ def ingest(
     
     console.print(Panel.fit("[bold cyan]Step 1: Data Ingestion[/bold cyan]"))
     config = get_config()
-    
-    try:
-        manifest_path = run_ingest(config)
-        console.print(f"[green][OK][/green] Manifest created: {manifest_path}")
-    except Exception as e:
-        console.print(f"[red][ERROR][/red] Ingestion failed: {sanitize_error(e)}")
-        raise typer.Exit(code=1)
+
+    with timed_step("Data Ingestion"):
+        try:
+            manifest_path = run_ingest(config)
+            console.print(f"[green][OK][/green] Manifest created: {manifest_path}")
+        except Exception as e:
+            console.print(f"[red][ERROR][/red] Ingestion failed: {sanitize_error(e)}")
+            raise typer.Exit(code=1)
 
 
 @app.command()
@@ -104,13 +132,14 @@ def preprocess_gt(
     
     console.print(Panel.fit("[bold cyan]Step 2: Ground Truth Preprocessing[/bold cyan]"))
     config = get_config()
-    
-    try:
-        run_preprocess_gt(config)
-        console.print("[green][OK][/green] Ground truth images preprocessed")
-    except Exception as e:
-        console.print(f"[red][ERROR][/red] GT preprocessing failed: {sanitize_error(e)}")
-        raise typer.Exit(code=1)
+
+    with timed_step("Ground Truth Preprocessing"):
+        try:
+            run_preprocess_gt(config)
+            console.print("[green][OK][/green] Ground truth images preprocessed")
+        except Exception as e:
+            console.print(f"[red][ERROR][/red] GT preprocessing failed: {sanitize_error(e)}")
+            raise typer.Exit(code=1)
 
 
 @app.command()
@@ -135,13 +164,14 @@ def render_cand(
     if fast:
         console.print("[yellow]Fast mode enabled: 128 samples[/yellow]")
         config.render.samples = 128
-    
-    try:
-        run_render_candidates(config)
-        console.print("[green][OK][/green] Candidates rendered")
-    except Exception as e:
-        console.print(f"[red][ERROR][/red] Rendering failed: {sanitize_error(e)}")
-        raise typer.Exit(code=1)
+
+    with timed_step("Candidate Rendering"):
+        try:
+            run_render_candidates(config)
+            console.print("[green][OK][/green] Candidates rendered")
+        except Exception as e:
+            console.print(f"[red][ERROR][/red] Rendering failed: {sanitize_error(e)}")
+            raise typer.Exit(code=1)
 
 
 @app.command()
@@ -164,13 +194,14 @@ def package(
     
     console.print(Panel.fit("[bold cyan]Step 4: Packaging Scoring Units[/bold cyan]"))
     config = get_config()
-    
-    try:
-        run_packetize(config)
-        console.print("[green][OK][/green] Scoring packets created")
-    except Exception as e:
-        console.print(f"[red][ERROR][/red] Packaging failed: {sanitize_error(e)}")
-        raise typer.Exit(code=1)
+
+    with timed_step("Packaging"):
+        try:
+            run_packetize(config)
+            console.print("[green][OK][/green] Scoring packets created")
+        except Exception as e:
+            console.print(f"[red][ERROR][/red] Packaging failed: {sanitize_error(e)}")
+            raise typer.Exit(code=1)
 
 
 @app.command()
@@ -197,18 +228,19 @@ def score(
     console.print(Panel.fit(f"[bold cyan]Step 5: LLM Scoring ({model})[/bold cyan]"))
     config = get_config()
 
-    try:
-        run_scoring(
-            config,
-            model=model,
-            repeats=repeats,
-            temperature=temperature,
-            top_p=top_p
-        )
-        console.print(f"[green][OK][/green] Scoring complete using {model}")
-    except Exception as e:
-        console.print(f"[red][ERROR][/red] Scoring failed: {sanitize_error(e)}")
-        raise typer.Exit(code=1)
+    with timed_step("LLM Scoring"):
+        try:
+            run_scoring(
+                config,
+                model=model,
+                repeats=repeats,
+                temperature=temperature,
+                top_p=top_p
+            )
+            console.print(f"[green][OK][/green] Scoring complete using {model}")
+        except Exception as e:
+            console.print(f"[red][ERROR][/red] Scoring failed: {sanitize_error(e)}")
+            raise typer.Exit(code=1)
 
 
 @app.command()
@@ -237,17 +269,18 @@ def aggregate(
     console.print(Panel.fit("[bold cyan]Step 6: Score Aggregation[/bold cyan]"))
     config = get_config()
 
-    try:
-        run_aggregation(
-            config,
-            latest_only=latest_only,
-            batch_pattern=batch_pattern,
-            after_date=after_date,
-        )
-        console.print("[green][OK][/green] Scores aggregated")
-    except Exception as e:
-        console.print(f"[red][ERROR][/red] Aggregation failed: {sanitize_error(e)}")
-        raise typer.Exit(code=1)
+    with timed_step("Score Aggregation"):
+        try:
+            run_aggregation(
+                config,
+                latest_only=latest_only,
+                batch_pattern=batch_pattern,
+                after_date=after_date,
+            )
+            console.print("[green][OK][/green] Scores aggregated")
+        except Exception as e:
+            console.print(f"[red][ERROR][/red] Aggregation failed: {sanitize_error(e)}")
+            raise typer.Exit(code=1)
 
 
 @app.command()
@@ -278,12 +311,13 @@ def translate(
         console.print("[yellow]Translation is disabled in config. Skipping...[/yellow]")
         return
 
-    try:
-        run_translation(config, model=model, force=force)
-        console.print(f"[green][OK][/green] Translation complete using {model}")
-    except Exception as e:
-        console.print(f"[red][ERROR][/red] Translation failed: {sanitize_error(e)}")
-        raise typer.Exit(code=1)
+    with timed_step("Translation"):
+        try:
+            run_translation(config, model=model, force=force)
+            console.print(f"[green][OK][/green] Translation complete using {model}")
+        except Exception as e:
+            console.print(f"[red][ERROR][/red] Translation failed: {sanitize_error(e)}")
+            raise typer.Exit(code=1)
 
 
 @app.command()
@@ -304,13 +338,14 @@ def report(
     
     console.print(Panel.fit("[bold cyan]Step 7: Report Generation[/bold cyan]"))
     config = get_config()
-    
-    try:
-        report_path = run_report(config)
-        console.print(f"[green][OK][/green] Report generated: {report_path}")
-    except Exception as e:
-        console.print(f"[red][ERROR][/red] Report generation failed: {sanitize_error(e)}")
-        raise typer.Exit(code=1)
+
+    with timed_step("Report Generation"):
+        try:
+            report_path = run_report(config)
+            console.print(f"[green][OK][/green] Report generated: {report_path}")
+        except Exception as e:
+            console.print(f"[red][ERROR][/red] Report generation failed: {sanitize_error(e)}")
+            raise typer.Exit(code=1)
 
 
 @app.command()

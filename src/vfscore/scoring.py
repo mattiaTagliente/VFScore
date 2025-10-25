@@ -13,18 +13,19 @@ import getpass
 import hashlib
 import json
 import socket
+import time
 import uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
 
 from rich.console import Console
-from rich.progress import track
+from rich.progress import Progress, TextColumn, BarColumn, TaskProgressColumn, TimeRemainingColumn
 
 from vfscore.config import Config
 from vfscore.llm.gemini import GeminiClient
 
-console = Console()
+console = Console(legacy_windows=True)
 
 
 def create_batch_directory_name() -> str:
@@ -93,13 +94,35 @@ def create_batch_metadata(
 def load_packets(labels_dir: Path) -> List[Dict]:
     """Load all scoring packets."""
     packets = []
-    
+
     for packet_path in labels_dir.glob("*/packet.json"):
         with open(packet_path, "r", encoding="utf-8") as f:
             packet = json.load(f)
             packets.append(packet)
-    
+
     return packets
+
+
+def is_item_already_scored(output_dir: Path, repeats: int) -> bool:
+    """Check if an item has already been scored with the required number of repeats.
+
+    Args:
+        output_dir: Output directory where results should be
+        repeats: Required number of repeats
+
+    Returns:
+        True if all repeat files exist, False otherwise
+    """
+    if not output_dir.exists():
+        return False
+
+    # Check if all repeat files exist
+    for rep_idx in range(1, repeats + 1):
+        rep_file = output_dir / f"rep_{rep_idx}.json"
+        if not rep_file.exists():
+            return False
+
+    return True
 
 
 def get_llm_client(model_name: str, temperature: float, top_p: float, run_id: str = None):
@@ -258,47 +281,76 @@ def run_scoring(
     if not model_dir_name:
         model_dir_name = "gemini"
 
-    # Score each item
+    # Score each item with detailed progress
     total_calls = 0
     success_items = 0
+    skipped_items = 0
 
-    for packet in track(packets, description=f"Scoring with {model}"):
-        item_id = packet["item_id"]
+    with Progress(
+        TextColumn("[progress.description]{task.description}"),
+        BarColumn(),
+        TaskProgressColumn(),
+        TimeRemainingColumn(),
+        console=console,
+    ) as progress:
+        task = progress.add_task(f"Scoring with {model}", total=len(packets))
 
-        # Build output directory path
-        if config.scoring.use_batch_mode:
-            output_dir = base_llm_calls_dir / model_dir_name / item_id / batch_dir_name
-        else:
-            # Legacy mode: no batch directory
-            output_dir = base_llm_calls_dir / model_dir_name / item_id
+        for idx, packet in enumerate(packets, 1):
+            item_id = packet["item_id"]
+            item_start = time.time()
 
-        output_dir.mkdir(parents=True, exist_ok=True)
+            # Update progress description with current item
+            progress.update(task, description=f"Scoring {item_id} ({idx}/{len(packets)})")
 
-        # Save batch metadata once per item
-        if config.scoring.use_batch_mode and batch_metadata:
-            batch_info_path = output_dir / "batch_info.json"
-            with open(batch_info_path, "w", encoding="utf-8") as f:
-                json.dump(batch_metadata, f, indent=2, ensure_ascii=False)
+            # Build output directory path
+            if config.scoring.use_batch_mode:
+                output_dir = base_llm_calls_dir / model_dir_name / item_id / batch_dir_name
+            else:
+                # Legacy mode: no batch directory
+                output_dir = base_llm_calls_dir / model_dir_name / item_id
 
-        try:
-            results = score_item_with_repeats(
-                packet=packet,
-                model_name=model,
-                temperature=actual_temperature,
-                top_p=actual_top_p,
-                rubric_weights=config.scoring.rubric_weights,
-                repeats=repeats,
-                output_dir=output_dir,
-            )
-
-            if results:
-                total_calls += len(results)
+            # Check if item is already scored
+            if is_item_already_scored(output_dir, repeats):
+                skipped_items += 1
                 success_items += 1
+                total_calls += repeats
+                console.print(f"[dim]  {item_id}: [yellow]skipped[/yellow] (already scored)[/dim]")
+                progress.advance(task)
+                continue
 
-        except Exception as e:
-            console.print(f"[red]Failed to score {item_id}: {e}[/red]")
+            output_dir.mkdir(parents=True, exist_ok=True)
 
-    console.print(f"[green]Completed {total_calls} API calls for {success_items}/{len(packets)} items[/green]")
+            # Save batch metadata once per item
+            if config.scoring.use_batch_mode and batch_metadata:
+                batch_info_path = output_dir / "batch_info.json"
+                with open(batch_info_path, "w", encoding="utf-8") as f:
+                    json.dump(batch_metadata, f, indent=2, ensure_ascii=False)
+
+            try:
+                results = score_item_with_repeats(
+                    packet=packet,
+                    model_name=model,
+                    temperature=actual_temperature,
+                    top_p=actual_top_p,
+                    rubric_weights=config.scoring.rubric_weights,
+                    repeats=repeats,
+                    output_dir=output_dir,
+                )
+
+                if results:
+                    total_calls += len(results)
+                    success_items += 1
+
+                # Log elapsed time for this item
+                item_elapsed = time.time() - item_start
+                console.print(f"[dim]  {item_id}: {item_elapsed:.1f}s ({repeats} repeats)[/dim]")
+
+            except Exception as e:
+                console.print(f"[red]Failed to score {item_id}: {e}[/red]")
+
+            progress.advance(task)
+
+    console.print(f"\n[green]Completed {total_calls} API calls for {success_items}/{len(packets)} items[/green]")
 
     if config.scoring.use_batch_mode:
         console.print(f"[cyan]Results saved in batch: {batch_dir_name}[/cyan]")

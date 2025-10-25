@@ -50,6 +50,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Added `Console(legacy_windows=True)` for better Windows compatibility
 - Updated `src/vfscore/__main__.py` across all commands
 
+#### Pipeline Performance and Windows Encoding Improvements
+**Date**: 2025-10-25
+
+- **Added Skip Logic**: Pipeline now skips already-processed files to save time
+  - `src/vfscore/render_cycles.py`: Checks if candidate.png exists before rendering
+  - `src/vfscore/preprocess_gt.py`: Checks if gt_*.png exists before preprocessing
+  - Displays skip counts: "Skipped X already-rendered/processed objects"
+  - Result: Subsequent runs complete in seconds instead of hours
+
+- **Fixed Windows Encoding in Progress Bars**:
+  - Replaced `rich.progress.track()` with custom `Progress()` without emojis
+  - Removed `SpinnerColumn` which uses Unicode spinner characters
+  - Used only: `TextColumn`, `BarColumn`, `TaskProgressColumn`
+  - Sanitized Blender stdout/stderr to remove emojis: `encode('ascii', errors='ignore')`
+
+- **Fixed Exception Message Encoding**:
+  - Added `sanitize_error()` helper function in `__main__.py`
+  - All exception messages sanitized before printing to console
+  - Prevents crashes when exceptions contain emoji characters
+  - Updated all 8 exception handlers in CLI commands
+
+**Why**: Ensures pipeline performance optimization and complete Windows compatibility, eliminating all Unicode-related crashes
+
 #### Validation Study Working Directory
 - **Fixed**: Subprocess commands running from wrong directory
 - All vfscore commands now use `cwd=str(vfscore_root)` parameter
