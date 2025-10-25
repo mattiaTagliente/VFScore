@@ -464,6 +464,8 @@ async def run_scoring_async(
     batch_metadata: Optional[Dict],
     model_dir_name: str,
     cost_tracker: CostTracker,
+    program_start_time: float,
+    cost_estimator: CostEstimator,
 ) -> Tuple[int, int, int]:
     """Run async scoring for all items with progress tracking and cost monitoring.
 
@@ -477,6 +479,7 @@ async def run_scoring_async(
     total_calls = 0
     success_items = 0
     skipped_items = 0
+    total_expected_calls = len(packets) * repeats
 
     with Progress(
         TextColumn("[progress.description]{task.description}"),
@@ -538,23 +541,48 @@ async def run_scoring_async(
                 )
 
                 if results:
-                    total_calls += len(results)
+                    num_results = len(results)
+                    total_calls += num_results
                     success_items += 1
 
                     # Record costs for each repeat
                     num_gt_images = len(packet.get("gt_labeled_paths", []))
-                    for _ in range(len(results)):
+                    for _ in range(num_results):
                         cost_tracker.record_call(item_id, num_gt_images)
+
+                    # Calculate per-call metrics
+                    item_elapsed = time.time() - item_start
+                    time_per_call = item_elapsed / num_results if num_results > 0 else 0
+                    program_elapsed = time.time() - program_start_time
+
+                    # Estimate cost per call
+                    cost_per_call, _ = cost_estimator.estimate_cost(num_gt_images, 1)
+                    total_call_cost = cost_per_call * num_results
+
+                    # Log detailed information
+                    console.print()
+                    console.print(f"[bold cyan]{item_id}[/bold cyan] completed:")
+                    console.print(f"  [dim]Calls:[/dim] {num_results} API calls in {item_elapsed:.1f}s ({time_per_call:.1f}s/call)")
+                    console.print(f"  [dim]Cost estimate:[/dim] ${total_call_cost:.4f} for this item (${cost_per_call:.4f}/call) [yellow](free tier if billing disabled)[/yellow]")
+                    console.print(f"  [dim]Progress:[/dim] {total_calls}/{total_expected_calls} total calls ({total_calls/total_expected_calls*100:.1f}%)")
+                    console.print(f"  [dim]Elapsed:[/dim] {program_elapsed/60:.1f} min since program start")
+                    console.print(f"  [dim]Running cost estimate:[/dim] ${cost_tracker.total_cost_usd:.4f} [yellow](free if billing disabled)[/yellow]")
+
+                    # Show RPD usage for each key
+                    if key_pool:
+                        console.print(f"  [dim]API Key Usage (RPD):[/dim]")
+                        all_stats = key_pool.get_all_stats()
+                        for label, stats in all_stats.items():
+                            rpd_used = stats["rpd"]["current"]
+                            rpd_limit = stats["rpd"]["limit"]
+                            rpd_remaining = rpd_limit - rpd_used
+                            usage_pct = (rpd_used / rpd_limit * 100) if rpd_limit > 0 else 0
+                            console.print(f"    [{label}]: {rpd_used}/{rpd_limit} used ({rpd_remaining} remaining, {usage_pct:.0f}%)")
 
                     # Check cost thresholds (auto-stop if max exceeded)
                     if not check_cost_threshold(cost_tracker, max_cost_usd=config.scoring.max_cost_usd):
                         console.print("[red]Scoring stopped (cost limit reached).[/red]")
                         break
-
-                # Log elapsed time
-                item_elapsed = time.time() - item_start
-                console.print(f"[dim]  {item_id}: {item_elapsed:.1f}s ({repeats} repeats)[/dim]")
-                console.print(f"[dim]  Running cost: ${cost_tracker.total_cost_usd:.4f}[/dim]")
 
             except QuotaExhaustedError as e:
                 console.print(f"[red]Quota exhausted: {e}[/red]")
@@ -637,6 +665,9 @@ def run_scoring(
     console.print(f"[bold]Scoring {len(packets)} items with {model} ({repeats} repeats each)...[/bold]")
     console.print(f"[cyan]Temperature: {actual_temperature}, Top-P: {actual_top_p}[/cyan]")
 
+    # Track program start time
+    program_start_time = time.time()
+
     # Check if async mode enabled
     if config.scoring.use_async:
         console.print("[cyan]Using async mode with intelligent rate limiting[/cyan]")
@@ -669,6 +700,9 @@ def run_scoring(
     cost_tracker = CostTracker(model, base_llm_calls_dir)
     console.print(f"[cyan]Cost tracking enabled (logs: {base_llm_calls_dir}/cost_tracker.json)[/cyan]")
 
+    # Create cost estimator for per-call cost display
+    cost_estimator = CostEstimator(model)
+
     # Run scoring (async or sync)
     if config.scoring.use_async:
         # Async mode
@@ -685,6 +719,8 @@ def run_scoring(
                 batch_metadata=batch_metadata,
                 model_dir_name=model_dir_name,
                 cost_tracker=cost_tracker,
+                program_start_time=program_start_time,
+                cost_estimator=cost_estimator,
             )
         )
     else:

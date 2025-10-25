@@ -277,18 +277,39 @@ class GeminiKeyPool:
 
     def print_stats(self):
         """Print formatted statistics for all keys."""
-        console.print("\n[bold]API Key Pool Statistics[/bold]")
+        console.print("\n" + "=" * 80)
+        console.print("[bold cyan]API Key Pool - Final Statistics[/bold cyan]")
         console.print("=" * 80)
 
-        for label, stats in self.get_all_stats().items():
-            console.print(f"\n[cyan]Key: {label}[/cyan]")
-            console.print(f"  RPM: {stats['rpm']['current']}/{stats['rpm']['limit']} ({stats['rpm']['utilization']})")
-            console.print(f"  TPM: {stats['tpm']['current']}/{stats['tpm']['limit']} ({stats['tpm']['utilization']})")
-            console.print(f"  RPD: {stats['rpd']['current']}/{stats['rpd']['limit']} ({stats['rpd']['utilization']})")
-            console.print(f"  Total: {stats['total_requests']} requests, {stats['total_tokens']} tokens")
-            if stats['last_request']:
-                console.print(f"  Last: {stats['last_request']}")
+        # Collect totals
+        total_requests = 0
+        total_tokens = 0
+        total_rpd_used = 0
+        total_rpd_limit = 0
 
+        for label, stats in self.get_all_stats().items():
+            rpd_used = stats['rpd']['current']
+            rpd_limit = stats['rpd']['limit']
+            rpd_remaining = rpd_limit - rpd_used
+
+            total_requests += stats['total_requests']
+            total_tokens += stats['total_tokens']
+            total_rpd_used += rpd_used
+            total_rpd_limit += rpd_limit
+
+            console.print(f"\n[bold cyan]{label}[/bold cyan]:")
+            console.print(f"  [dim]Requests today:[/dim] {rpd_used}/{rpd_limit} ({stats['rpd']['utilization']}) - [green]{rpd_remaining} remaining[/green]")
+            console.print(f"  [dim]RPM:[/dim] {stats['rpm']['current']}/{stats['rpm']['limit']} ({stats['rpm']['utilization']})")
+            console.print(f"  [dim]TPM:[/dim] {stats['tpm']['current']:,}/{stats['tpm']['limit']:,} ({stats['tpm']['utilization']})")
+            console.print(f"  [dim]Total:[/dim] {stats['total_requests']} requests, {stats['total_tokens']:,} tokens")
+
+        # Summary
+        total_rpd_remaining = total_rpd_limit - total_rpd_used
+        console.print("\n" + "=" * 80)
+        console.print("[bold]Summary across all keys:[/bold]")
+        console.print(f"  [dim]Total requests today:[/dim] {total_rpd_used}/{total_rpd_limit} ({total_rpd_used/total_rpd_limit*100:.1f}%)")
+        console.print(f"  [dim]Remaining capacity:[/dim] [green]{total_rpd_remaining} requests[/green] ({total_rpd_remaining/total_rpd_limit*100:.1f}%)")
+        console.print(f"  [dim]Total tokens processed:[/dim] {total_tokens:,}")
         console.print("=" * 80 + "\n")
 
     def save_stats(self, output_path: Path):
