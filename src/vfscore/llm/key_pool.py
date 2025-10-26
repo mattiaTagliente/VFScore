@@ -75,6 +75,9 @@ class KeyQuotaTracker:
         """
         Check if a request can be made without exceeding quotas.
 
+        Note: Uses conservative estimates with safety margins to prevent Google rate limits.
+        Due to async execution and timing variations, local tracking is optimistic.
+
         Args:
             estimated_tokens: Estimated token usage for this request
 
@@ -89,13 +92,19 @@ class KeyQuotaTracker:
         if self.requests_today >= self.rpd_limit:
             return False, f"Daily quota exhausted ({self.requests_today}/{self.rpd_limit})"
 
-        # Check RPM (requests per minute)
-        if len(self.request_timestamps) >= self.rpm_limit:
+        # Check RPM (requests per minute) - USE SAFETY MARGIN
+        # Google's limit is 2 RPM, but we enforce 1.5 RPM locally to account for:
+        # - Async race conditions (multiple tasks checking quota simultaneously)
+        # - Clock skew between local system and Google servers
+        # - Google's rate limiter implementation differences
+        effective_rpm_limit = max(1, int(self.rpm_limit * 0.75))  # 75% of limit as safety margin
+
+        if len(self.request_timestamps) >= effective_rpm_limit:
             oldest = self.request_timestamps[0]
             time_since_oldest = now - oldest
             if time_since_oldest < 60:
                 wait_time = 60 - time_since_oldest
-                return False, f"RPM limit ({self.rpm_limit}/min), retry in {wait_time:.1f}s"
+                return False, f"RPM limit ({effective_rpm_limit}/min with safety margin), retry in {wait_time:.1f}s"
 
         # Check TPM (tokens per minute)
         # Remove old token entries (older than 60s)

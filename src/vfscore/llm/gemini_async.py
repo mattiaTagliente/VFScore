@@ -180,10 +180,14 @@ class AsyncGeminiClient(BaseLLMClient):
                     if attempt < max_retries - 1:
                         # Use console.log() to avoid interfering with progress bar
                         console.log(
-                            f"[yellow][{key_label or 'unknown'}] Rate limit hit ({limit_type}), "
-                            f"retrying in {wait_time:.1f}s (attempt {attempt + 1}/{max_retries})[/yellow]"
+                            f"[yellow][{key_label or 'unknown'}] Google rate limit triggered ({limit_type})[/yellow]"
                         )
-                        console.log(f"[dim]  Error: {err_msg[:120]}[/dim]")
+                        console.log(
+                            f"[dim]  Note: Local quota tracking uses 75% safety margin, but Google's rate limiter may still "
+                            f"trigger due to async timing, clock skew, or billing status.[/dim]"
+                        )
+                        console.log(f"[dim]  Retrying in {wait_time:.1f}s (attempt {attempt + 1}/{max_retries})[/dim]")
+                        console.log(f"[dim]  Error: {err_msg}[/dim]")
                         await asyncio.sleep(wait_time)
                         continue
                     else:

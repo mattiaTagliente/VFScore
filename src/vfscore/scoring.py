@@ -574,7 +574,9 @@ async def run_scoring_async(
                         rpd_limit = stats["rpd"]["limit"]
                         rpd_remaining = rpd_limit - rpd_used
                         usage_pct = (rpd_used / rpd_limit * 100) if rpd_limit > 0 else 0
-                        console.print(f"      [{label}]: {rpd_used}/{rpd_limit} used ({rpd_remaining} remaining, {usage_pct:.0f}%)")
+                        # Use key_id from stats if label is empty (should never happen, but defensive)
+                        display_label = label if label else stats.get("key_id", "unknown")
+                        console.print(f"      [{display_label}]: {rpd_used}/{rpd_limit} used ({rpd_remaining} remaining, {usage_pct:.0f}%)")
 
                 console.print()  # Blank line for readability
 
