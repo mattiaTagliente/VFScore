@@ -181,6 +181,7 @@ class GeminiKeyPool:
         rpm_limit: int = 5,
         tpm_limit: int = 125000,
         rpd_limit: int = 100,
+        persistence_file: Optional[Path] = None,
     ):
         """
         Args:
@@ -189,6 +190,7 @@ class GeminiKeyPool:
             rpm_limit: Requests per minute per key
             tpm_limit: Tokens per minute per key
             rpd_limit: Requests per day per key
+            persistence_file: Path to JSON file for persisting RPD counters (default: outputs/llm_calls/rpd_state.json)
         """
         if not api_keys:
             raise ValueError("At least one API key required")
@@ -199,11 +201,20 @@ class GeminiKeyPool:
         if len(self.key_labels) != len(self.api_keys):
             raise ValueError("Number of key_labels must match number of api_keys")
 
+        # Persistence file for RPD state
+        if persistence_file is None:
+            # Default location in outputs/llm_calls/
+            persistence_file = Path("outputs/llm_calls/rpd_state.json")
+        self.persistence_file = Path(persistence_file)
+
         # Create quota trackers for each key
         self.trackers = {
             label: KeyQuotaTracker(label, rpm_limit, tpm_limit, rpd_limit)
             for label in self.key_labels
         }
+
+        # Load persisted RPD state
+        self._load_rpd_state()
 
         # Lock for thread-safe key selection
         self._lock = asyncio.Lock()
@@ -212,6 +223,9 @@ class GeminiKeyPool:
         self._current_idx = 0
 
         console.print(f"[cyan]Initialized key pool with {len(api_keys)} keys: {', '.join(self.key_labels)}[/cyan]")
+        # Debug: Verify trackers dictionary has correct keys
+        if not all(label for label in self.trackers.keys()):
+            console.print(f"[red]WARNING: Some tracker keys are empty! Keys: {list(self.trackers.keys())}[/red]")
 
     async def get_available_key(self, estimated_tokens: int = 5000) -> Tuple[str, str]:
         """
@@ -263,6 +277,9 @@ class GeminiKeyPool:
         if key_label in self.trackers:
             self.trackers[key_label].record_request(token_count)
 
+            # Persist RPD state to disk
+            self._save_rpd_state()
+
             # Warn at 80% daily quota
             stats = self.trackers[key_label].get_stats()
             rpd_used = stats["rpd"]["current"]
@@ -270,6 +287,57 @@ class GeminiKeyPool:
 
             if rpd_used == int(rpd_limit * 0.8):
                 console.print(f"[yellow][!] [{key_label}] 80% daily quota used ({rpd_used}/{rpd_limit})[/yellow]")
+
+    def _load_rpd_state(self):
+        """Load persisted RPD state from disk."""
+        if not self.persistence_file.exists():
+            return  # No saved state yet
+
+        try:
+            with open(self.persistence_file, "r", encoding="utf-8") as f:
+                state = json.load(f)
+
+            # Check if state is from today
+            current_date = KeyQuotaTracker._get_current_date_pt()
+            if state.get("date") != current_date:
+                console.print(f"[dim]  RPD state from previous day ({state.get('date')}), resetting counters[/dim]")
+                return  # Old state, ignore
+
+            # Restore RPD counters for each key
+            for label, tracker in self.trackers.items():
+                if label in state.get("rpd_counters", {}):
+                    rpd_used = state["rpd_counters"][label]
+                    tracker.requests_today = rpd_used
+                    tracker.last_reset_date = current_date
+
+            console.print(f"[dim]  Loaded RPD state from {self.persistence_file}[/dim]")
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not load RPD state: {e}[/yellow]")
+
+    def _save_rpd_state(self):
+        """Save current RPD state to disk."""
+        try:
+            # Ensure directory exists
+            self.persistence_file.parent.mkdir(parents=True, exist_ok=True)
+
+            # Build state dict
+            state = {
+                "date": KeyQuotaTracker._get_current_date_pt(),
+                "rpd_counters": {
+                    label: tracker.requests_today
+                    for label, tracker in self.trackers.items()
+                },
+                "last_updated": datetime.now(timezone.utc).isoformat(),
+            }
+
+            # Write atomically (write to temp file, then rename)
+            temp_file = self.persistence_file.with_suffix(".tmp")
+            with open(temp_file, "w", encoding="utf-8") as f:
+                json.dump(state, f, indent=2, ensure_ascii=False)
+            temp_file.replace(self.persistence_file)
+
+        except Exception as e:
+            console.print(f"[yellow]Warning: Could not save RPD state: {e}[/yellow]")
 
     def get_all_stats(self) -> Dict[str, Dict[str, Any]]:
         """Get statistics for all keys."""
@@ -292,9 +360,12 @@ class GeminiKeyPool:
             total_rpd_used += rpd_used
             total_rpd_limit += rpd_limit
 
+            # Use label from stats if the loop label is empty (defensive)
+            display_label = label if label else stats.get('key_id', 'unknown')
+
             status = "[green]OK[/green]" if rpd_remaining > 20 else "[yellow]LOW[/yellow]" if rpd_remaining > 0 else "[red]EXHAUSTED[/red]"
             console.print(
-                f"  [{label}]: {rpd_used}/{rpd_limit} used ({rpd_remaining} remaining, {usage_pct:.0f}%) - {status}"
+                f"  [{display_label}]: {rpd_used}/{rpd_limit} used ({rpd_remaining} remaining, {usage_pct:.0f}%) - {status}"
             )
 
         total_rpd_remaining = total_rpd_limit - total_rpd_used
@@ -327,7 +398,10 @@ class GeminiKeyPool:
             total_rpd_used += rpd_used
             total_rpd_limit += rpd_limit
 
-            console.print(f"\n[bold cyan]{label}[/bold cyan]:")
+            # Use label from stats if the loop label is empty (defensive)
+            display_label = label if label else stats.get('key_id', 'unknown')
+
+            console.print(f"\n[bold cyan]{display_label}[/bold cyan]:")
             console.print(f"  [dim]Requests today:[/dim] {rpd_used}/{rpd_limit} ({stats['rpd']['utilization']}) - [green]{rpd_remaining} remaining[/green]")
             console.print(f"  [dim]RPM:[/dim] {stats['rpm']['current']}/{stats['rpm']['limit']} ({stats['rpm']['utilization']})")
             console.print(f"  [dim]TPM:[/dim] {stats['tpm']['current']:,}/{stats['tpm']['limit']:,} ({stats['tpm']['utilization']})")
